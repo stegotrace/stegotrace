@@ -12,8 +12,8 @@ check:
 web-check:
 	cmp -s install.sh web/public/install.sh
 	sh -n install.sh
-	cd web/public/cli/v0.2.0 && shasum -a 256 -c stegotrace-aarch64-apple-darwin.tar.gz.sha256
-	cd web/public/cli/v0.2.0 && shasum -a 256 -c stegotrace-x86_64-apple-darwin.tar.gz.sha256
+	cd web/public/cli/v0.3.0 && shasum -a 256 -c stegotrace-aarch64-apple-darwin.tar.gz.sha256
+	cd web/public/cli/v0.3.0 && shasum -a 256 -c stegotrace-x86_64-apple-darwin.tar.gz.sha256
 	cd web && npm ci && npm run lint && npm run build
 
 install-local:

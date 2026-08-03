@@ -1,0 +1,2 @@
+4bb321f6bc005f9149c2fbdb0bdacf05e7e5b45ba024d8a7fffced8f6e147c24  stegotrace-aarch64-apple-darwin.tar.gz
+6069c978a19f468a4292d03efdab1b4b3ee77614351042b05cdd122f4f792234  stegotrace-x86_64-apple-darwin.tar.gz

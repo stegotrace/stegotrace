@@ -4,6 +4,8 @@ import hashlib
 import io
 import json
 import wave
+import zipfile
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -13,10 +15,13 @@ from . import __version__, statistics
 from .jpeg_compatibility import analyze_jpeg_compatibility
 from .models import AnalysisReport, Artifact, Finding
 from .scientific import analyze_with_aletheia
-from .structure import SIGNATURES, analyze_structure
+from .structure import SIGNATURES, _canonical_end, analyze_structure
 
 Image.MAX_IMAGE_PIXELS = 40_000_000
 MAX_DECODED_VALUES = 120_000_000
+MAX_LSB_DECOMPRESSED_BYTES = 16 * 1024 * 1024
+MAX_LSB_SIGNATURE_CANDIDATES = 64
+LSB_SIGNATURES = tuple(item for item in SIGNATURES if item[1] in {"zip", "pdf", "png", "jpeg", "gzip"})
 
 
 def _read_image(data: bytes) -> tuple[np.ndarray, dict] | None:
@@ -46,6 +51,221 @@ def _lsb_stream(pixels: np.ndarray, *, plane: int, channels: list[int], bit_orde
     return np.packbits(bits, bitorder=bit_order).tobytes()
 
 
+def _zsteg_stream(pixels: np.ndarray, *, bit_depth: int, channels: list[int], reverse_rows: bool = False) -> bytes:
+    if pixels.ndim == 2:
+        pixels = pixels[:, :, None]
+    selected = pixels[::-1] if reverse_rows else pixels
+    selected = selected[:, :, channels]
+    shifts = np.arange(bit_depth - 1, -1, -1, dtype=np.uint8)
+    bits = ((selected[:, :, :, None] >> shifts) & 1).reshape(-1)
+    return np.packbits(bits, bitorder="big").tobytes()
+
+
+def _artifact_id(recipe: dict) -> str:
+    return hashlib.sha256(json.dumps(recipe, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def _protocol_artifacts(pixels: np.ndarray, filename: str) -> tuple[list[Finding], list[Artifact]]:
+    if pixels.ndim == 2 or pixels.shape[2] < 3:
+        return [], []
+    findings: list[Finding] = []
+    artifacts: list[Artifact] = []
+
+    openstego = _zsteg_stream(pixels, bit_depth=1, channels=[0, 1, 2])
+    start = openstego.find(b"OPENSTEGO")
+    if start >= 0 and start + 18 <= len(openstego):
+        version = openstego[start + 9]
+        data_size = int.from_bytes(openstego[start + 10 : start + 14], "little")
+        channel_bits, name_size, compressed, encrypted = openstego[start + 14 : start + 18]
+        name_end = start + 18 + name_size
+        end = name_end + data_size
+        name = openstego[start + 18 : name_end]
+        if (
+            version in {1, 2}
+            and 1 <= channel_bits <= 8
+            and data_size > 0
+            and end <= len(openstego)
+            and name
+            and all(32 <= byte <= 126 for byte in name)
+        ):
+            decoded_name = name.decode("ascii")
+            recipe = {
+                "plane": 0,
+                "channels": [0, 1, 2],
+                "bit_order": "big",
+                "start": start,
+                "end": end,
+            }
+            artifact_id = _artifact_id(recipe)
+            payload = openstego[start:end]
+            findings.append(
+                Finding(
+                    f"extraction.openstego-{artifact_id}",
+                    "extraction",
+                    "Contenedor OpenStego validado",
+                    "high",
+                    "openstego-v1-header",
+                    {
+                        "version": version,
+                        "data_bytes": data_size,
+                        "channel_bits": channel_bits,
+                        "filename": decoded_name,
+                        "compressed": bool(compressed),
+                        "encrypted": bool(encrypted),
+                    },
+                    "La cabecera, longitudes y nombre interno forman un contenedor OpenStego coherente.",
+                    97,
+                )
+            )
+            artifacts.append(
+                Artifact(
+                    id=artifact_id,
+                    kind="openstego",
+                    suggested_name=f"{Path(filename).stem}-openstego.bin",
+                    size=len(payload),
+                    sha256=hashlib.sha256(payload).hexdigest(),
+                    description=f"Contenedor OpenStego; nombre interno: {decoded_name}.",
+                    extractor="lsb",
+                    parameters=recipe,
+                    mime="application/octet-stream",
+                )
+            )
+
+    wbstego = _zsteg_stream(pixels, bit_depth=1, channels=[2, 1, 0], reverse_rows=True)
+    declared = int.from_bytes(wbstego[:3], "little") if len(wbstego) >= 6 else 0
+    if 4 <= declared <= len(wbstego) - 3:
+        extension = wbstego[3:6]
+        message = wbstego[6 : 3 + declared]
+        if (
+            extension.isalnum()
+            and message
+            and all(byte in {9, 10, 13} or 32 <= byte <= 126 for byte in message)
+            and len(message.rstrip(b"\r\n\t ")) >= 8
+        ):
+            recipe = {
+                "bit_depth": 1,
+                "channels": [2, 1, 0],
+                "reverse_rows": True,
+                "start": 6,
+                "end": 3 + declared,
+            }
+            artifact_id = _artifact_id(recipe)
+            decoded_extension = extension.decode("ascii").lower()
+            findings.append(
+                Finding(
+                    f"extraction.wbstego-{artifact_id}",
+                    "extraction",
+                    "Carga wbStego sin cifrar validada",
+                    "high",
+                    "wbstego-plain-header",
+                    {"declared_bytes": declared, "extension": decoded_extension},
+                    "El tamaño declarado, la extensión y el contenido forman una carga wbStego coherente.",
+                    96,
+                )
+            )
+            artifacts.append(
+                Artifact(
+                    id=artifact_id,
+                    kind="wbstego-text",
+                    suggested_name=f"{Path(filename).stem}-wbstego.{decoded_extension}",
+                    size=len(message),
+                    sha256=hashlib.sha256(message).hexdigest(),
+                    description="Texto sin cifrar recuperado de una carga wbStego.",
+                    extractor="lsb-zsteg",
+                    parameters=recipe,
+                    mime="text/plain",
+                )
+            )
+
+    for bit_depth in range(2, 5):
+        stream = _zsteg_stream(pixels, bit_depth=bit_depth, channels=[0, 1, 2])
+        end = stream.find(b"\x00")
+        if end < 12 or stream[end : end + 4] != b"\x00" * 4:
+            continue
+        text = stream[:end]
+        if not all(byte in {9, 10, 13} or 32 <= byte <= 126 for byte in text):
+            continue
+        recipe = {
+            "bit_depth": bit_depth,
+            "channels": [0, 1, 2],
+            "reverse_rows": False,
+            "start": 0,
+            "end": end,
+        }
+        artifact_id = _artifact_id(recipe)
+        findings.append(
+            Finding(
+                f"extraction.multibit-text-{artifact_id}",
+                "extraction",
+                f"Texto en {bit_depth} bits bajos por canal",
+                "high",
+                "multibit-lsb-text",
+                {"bit_depth": bit_depth, "bytes": len(text), "channels": "RGB"},
+                "Una secuencia ASCII terminada en nulos ocupa varios bits bajos de cada canal.",
+                95,
+            )
+        )
+        artifacts.append(
+            Artifact(
+                id=artifact_id,
+                kind="lsb-text",
+                suggested_name=f"{Path(filename).stem}-{bit_depth}bit-lsb.txt",
+                size=len(text),
+                sha256=hashlib.sha256(text).hexdigest(),
+                description=f"Texto recuperado de los {bit_depth} bits bajos RGB.",
+                extractor="lsb-zsteg",
+                parameters=recipe,
+                mime="text/plain",
+            )
+        )
+        break
+    return findings, artifacts
+
+
+def _validated_payload_end(stream: bytes, offset: int, kind: str) -> int | None:
+    payload = stream[offset:]
+    if kind in {"png", "jpeg"}:
+        end, _, _ = _canonical_end(payload, kind)
+        if not end:
+            return None
+        try:
+            with Image.open(io.BytesIO(payload[:end])) as image:
+                if image.format.lower() != kind:
+                    return None
+                image.verify()
+        except (UnidentifiedImageError, OSError, SyntaxError):
+            return None
+        return offset + end
+    if kind == "pdf":
+        end, _, _ = _canonical_end(payload, kind)
+        if end and b"startxref" in payload[:end] and b"/Catalog" in payload[:end]:
+            return offset + end
+        return None
+    if kind == "zip":
+        marker = payload.find(b"PK\x05\x06", 4)
+        while marker >= 0 and marker + 22 <= len(payload):
+            end = marker + 22 + int.from_bytes(payload[marker + 20 : marker + 22], "little")
+            if end <= len(payload):
+                candidate = payload[:end]
+                try:
+                    with zipfile.ZipFile(io.BytesIO(candidate)) as archive:
+                        if archive.infolist():
+                            return offset + end
+                except (OSError, ValueError, zipfile.BadZipFile):
+                    pass
+            marker = payload.find(b"PK\x05\x06", marker + 4)
+        return None
+    if kind == "gzip":
+        try:
+            decoder = zlib.decompressobj(wbits=31)
+            decoder.decompress(payload, MAX_LSB_DECOMPRESSED_BYTES)
+            if decoder.eof:
+                return offset + len(payload) - len(decoder.unused_data)
+        except zlib.error:
+            pass
+    return None
+
+
 def _lsb_artifacts(pixels: np.ndarray, filename: str) -> tuple[list[Finding], list[Artifact]]:
     if pixels.ndim == 2:
         pixels = pixels[:, :, None]
@@ -58,19 +278,26 @@ def _lsb_artifacts(pixels: np.ndarray, filename: str) -> tuple[list[Finding], li
         for channels in channel_sets:
             for bit_order in ("big", "little"):
                 stream = _lsb_stream(pixels, plane=plane, channels=channels, bit_order=bit_order)
-                for signature, kind, mime in SIGNATURES:
+                for signature, kind, mime in LSB_SIGNATURES:
                     offset = stream.find(signature)
+                    attempts = 0
+                    while offset >= 0 and attempts < MAX_LSB_SIGNATURE_CANDIDATES:
+                        attempts += 1
+                        end = _validated_payload_end(stream, offset, kind)
+                        if end is not None:
+                            break
+                        offset = stream.find(signature, offset + 1)
                     key = (plane, tuple(channels), bit_order, offset)
                     if offset < 0 or key in seen:
                         continue
                     seen.add(key)
-                    payload = stream[offset:]
+                    payload = stream[offset:end]
                     recipe = {
                         "plane": plane,
                         "channels": channels,
                         "bit_order": bit_order,
                         "start": offset,
-                        "end": len(stream),
+                        "end": end,
                     }
                     artifact_id = hashlib.sha256(json.dumps(recipe, sort_keys=True).encode()).hexdigest()[:16]
                     channel_label = "".join("RGB"[channel] for channel in channels) if available > 1 else "Y"
@@ -181,6 +408,9 @@ def analyze_file(path: str | Path, *, filename: str | None = None) -> AnalysisRe
             lsb_findings, lsb_artifacts = _lsb_artifacts(pixels, display_name)
             findings.extend(lsb_findings)
             artifacts.extend(lsb_artifacts)
+            protocol_findings, protocol_artifacts = _protocol_artifacts(pixels, display_name)
+            findings.extend(protocol_findings)
+            artifacts.extend(protocol_artifacts)
             methods.update(
                 {
                     "westfeld-chi-square",
@@ -189,6 +419,9 @@ def analyze_file(path: str | Path, *, filename: str | None = None) -> AnalysisRe
                     "bit-plane-complexity",
                     "subsequent-embedding-calibration",
                     "tiled-low-order-steganalysis",
+                    "openstego-v1-header",
+                    "wbstego-plain-header",
+                    "multibit-lsb-text",
                 }
             )
     elif structure.format_name == "jpeg":
@@ -276,6 +509,8 @@ def analyze_file(path: str | Path, *, filename: str | None = None) -> AnalysisRe
         if score >= 25
         else "Sin indicios relevantes en los métodos ejecutados"
     )
+    if structure.format_name in {"png", "jpeg"} and not scientific.available and score < 50:
+        verdict = "Análisis no concluyente sin perfil científico"
     if not findings:
         findings.append(
             Finding(
@@ -288,6 +523,16 @@ def analyze_file(path: str | Path, *, filename: str | None = None) -> AnalysisRe
                 "El archivo no coincide con un analizador especializado; se inspeccionaron límites y firmas.",
                 100,
             )
+        )
+    limitations = [
+        "La puntuación no es una probabilidad calibrada.",
+        "Un negativo no demuestra ausencia y un positivo no identifica por sí solo el algoritmo.",
+        "La extracción genérica no puede descifrar cargas protegidas por clave.",
+    ]
+    if structure.format_name in {"png", "jpeg"} and not scientific.available:
+        limitations.append(
+            "No se ejecutaron detectores neuronales específicos de fuente; "
+            "el resultado PNG/JPEG no puede considerarse negativo."
         )
     return AnalysisReport(
         schema_version="1.0",
@@ -303,11 +548,7 @@ def analyze_file(path: str | Path, *, filename: str | None = None) -> AnalysisRe
         artifacts=artifacts,
         scientific=scientific,
         methods=sorted(methods),
-        limitations=[
-            "La puntuación no es una probabilidad calibrada.",
-            "Un negativo no demuestra ausencia y un positivo no identifica por sí solo el algoritmo.",
-            "La extracción genérica no puede descifrar cargas protegidas por clave.",
-        ],
+        limitations=limitations,
     )
 
 
@@ -320,7 +561,7 @@ def extract_artifact(path: str | Path, artifact_id: str, *, filename: str | None
     data = source.read_bytes()
     if artifact.extractor == "slice":
         payload = data[artifact.parameters["start"] : artifact.parameters["end"]]
-    else:
+    elif artifact.extractor == "lsb":
         decoded = _read_image(data)
         if decoded is None:
             raise ValueError("No se puede reconstruir el flujo LSB")
@@ -330,6 +571,18 @@ def extract_artifact(path: str | Path, artifact_id: str, *, filename: str | None
             plane=artifact.parameters["plane"],
             channels=artifact.parameters["channels"],
             bit_order=artifact.parameters["bit_order"],
+        )
+        payload = stream[artifact.parameters["start"] : artifact.parameters["end"]]
+    else:
+        decoded = _read_image(data)
+        if decoded is None:
+            raise ValueError("No se puede reconstruir el flujo LSB")
+        pixels, _ = decoded
+        stream = _zsteg_stream(
+            pixels,
+            bit_depth=artifact.parameters["bit_depth"],
+            channels=artifact.parameters["channels"],
+            reverse_rows=artifact.parameters["reverse_rows"],
         )
         payload = stream[artifact.parameters["start"] : artifact.parameters["end"]]
     if hashlib.sha256(payload).hexdigest() != artifact.sha256:

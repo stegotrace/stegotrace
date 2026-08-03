@@ -5,7 +5,10 @@ sin abrirlas ni ejecutarlas. La puntuación es evidencia heurística, no una pro
 
 ## Superficies
 
-- [Aplicación web](https://stegotrace.guillermozubikarai.dev)
+- [Aplicación web en español](https://stegotrace.guillermozubikarai.dev/es/)
+- [Web application in English](https://stegotrace.guillermozubikarai.dev/en/)
+- [Guía completa de la CLI](https://stegotrace.guillermozubikarai.dev/es/cli/)
+- [Complete CLI guide](https://stegotrace.guillermozubikarai.dev/en/cli/)
 - [API y OpenAPI](https://stegotrace-api.guillermozubikarai.dev/docs)
 - [Código, CLI e investigación](https://github.com/kattulus1997/stegotrace)
 
@@ -16,4 +19,5 @@ Instalación gratuita, sin depender de GitHub:
 Funciona en un Mac nuevo sin Homebrew, Xcode, Rosetta, Rust ni Python; selecciona el binario nativo,
 verifica su SHA-256, lo instala en `/usr/local/bin` y ejecuta una comprobación final.
 Los modelos Aletheia son opcionales, se verifican por SHA-256 y sus respuestas están sujetas a
-cover-source mismatch.
+cover-source mismatch. El perfil cubre LSBM, LSBR, HILL, SteganoGAN, J-UNIWARD, OutGuess, nsF5 y
+Steghide.

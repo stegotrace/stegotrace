@@ -36,8 +36,9 @@ stegotrace extract imagen.png --artifact ID --out recuperado.bin
 ```
 
 La extracción nunca sobrescribe, abre, descomprime ni ejecuta el resultado. `scan` no modifica el
-original. `models install` añade de forma opcional cuatro detectores EfficientNet-B0 de Aletheia:
-LSBM y HILL para imágenes espaciales, y J-UNIWARD y Steghide para JPEG. Descarga 205 MiB de pesos
+original. `models install` añade de forma opcional ocho detectores EfficientNet-B0 de Aletheia:
+LSBM, LSBR, HILL y SteganoGAN para imágenes espaciales, y J-UNIWARD, OutGuess, nsF5 y Steghide para
+JPEG. Descarga 391 MiB de pesos
 desde el commit oficial fijado, comprueba cada SHA-256 y crea un entorno Python/TensorFlow aislado
 en `~/Library/Application Support/StegoTrace` (aproximadamente 2,8 GiB en total). El comando instala
 también una copia gestionada y verificada de `uv` si no existe en el Mac.
@@ -84,11 +85,13 @@ Incluye inspección estructural y *carving*, χ² de pares, RS, runs/entropía d
 planos, análisis PCM, re-embebido contrafactual, mapas locales y una búsqueda acotada de antecedentes
 JPEG QF100 basada en Levecque–Butora–Bas. Aletheia puede aportar modelos específicos; si no está
 configurado, el informe lo declara y no inventa una predicción. La metodología, referencias y límites
-están en [docs/RESEARCH.md](docs/RESEARCH.md).
+están en [docs/RESEARCH.md](docs/RESEARCH.md). La matriz pública de muestras, hashes y resultados
+está en [docs/REAL_WORLD_EVALUATION.md](docs/REAL_WORLD_EVALUATION.md).
 
-La CLI Rust ejecuta estructura, firmas, χ², RS, entropía/runs, re-embebido, mapa local y extracción
-LSB. La búsqueda de antecedentes JPEG QF100 requiere coeficientes DCT y se ejecuta actualmente en la
-API; el adaptador Aletheia es opcional en ambas superficies.
+La CLI Rust ejecuta estructura, firmas, χ², RS, entropía/runs, re-embebido, mapa local, parsers
+OpenStego/wbStego y extracción LSB validada de uno o varios bits. La búsqueda de antecedentes JPEG
+QF100 requiere coeficientes DCT y se ejecuta actualmente en la API; el adaptador Aletheia es opcional
+en ambas superficies.
 
 ## Formatos y seguridad
 

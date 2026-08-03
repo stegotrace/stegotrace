@@ -1,5 +1,24 @@
 # Registro de releases
 
+## 0.3.0
+
+Estado: publicado y verificado el 3 de agosto de 2026.
+
+- Corpus real: 11/11 muestras esteganográficas detectadas con el perfil CLI completo y 2/2
+  controles sin artefactos recuperables; matriz, SHA-256 y límites en `REAL_WORLD_EVALUATION.md`.
+- Detección: nuevos perfiles LSBR, SteganoGAN, OutGuess y nsF5; extracción acotada de OpenStego
+  v1, wbStego sin cifrar y texto RGB de 2–4 bits; validación reforzada de contenedores tallados.
+- Decisión: PNG/JPEG sin modelos pasa a “no concluyente” en vez de comunicar ausencia; los modelos
+  mantienen sus respuestas específicas separadas del índice heurístico.
+- Web: español e inglés humanos, guía CLI completa, selector manual y redirección inicial por idioma
+  con Cloudflare Worker `d270e049-fb5d-407e-9a2e-77b57eba1266`.
+- Distribución: instalador gratuito desde el dominio propio y binarios nativos macOS arm64/x86_64,
+  sin Homebrew, Xcode, Rosetta, Rust, Python ni descargas desde GitHub.
+- Vercel: deployment `dpl_HqNPLQpDNgCfQFPeqf96sDAcmita`, servido por Cloudflare.
+- Railway: deployment `72c0942c-83e8-4235-b8ba-a3084d1e34d0` en `europe-west4-drams3a`.
+- Verificado: tests/lint/Clippy, builds de ambas arquitecturas, checksums, benchmark reproducible,
+  rutas bilingües, proxy Cloudflare, instalador público, muestra pública y API de producción.
+
 ## Distribución CLI · revisión del 3 de agosto de 2026
 
 Estado: publicado y verificado.

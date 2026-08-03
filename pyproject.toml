@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stegotrace"
-version = "0.2.0"
+version = "0.3.0"
 description = "Auditable steganalysis and safe payload extraction"
 readme = "README.md"
 license = "MIT"

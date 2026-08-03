@@ -1,0 +1,19 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "stegotrace-language-router",
+  "account_id": "1fce460772a0964ac79aa933876c7528",
+  "main": "cloudflare-language-router.mjs",
+  "compatibility_date": "2026-08-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "routes": [
+    {
+      "pattern": "stegotrace.guillermozubikarai.dev/*",
+      "zone_name": "guillermozubikarai.dev"
+    }
+  ]
+}

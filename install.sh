@@ -6,7 +6,7 @@ install_dir="${STEGOTRACE_INSTALL_DIR:-/usr/local/bin}"
 distribution="https://stegotrace.guillermozubikarai.dev/cli"
 
 if [ "$version" = "latest" ]; then
-  version="v0.2.0"
+  version="v0.3.0"
 fi
 
 if [ "$(uname -s)" != "Darwin" ]; then

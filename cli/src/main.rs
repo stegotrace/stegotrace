@@ -158,6 +158,27 @@ fn identify(data: &[u8]) -> (&'static str, &'static str) {
     }
 }
 
+fn evidence_verdict(
+    score: u8,
+    scientific_available: bool,
+    neural_score: f64,
+    format: &str,
+) -> &'static str {
+    if score >= 75 {
+        "Indicios fuertes compatibles con esteganografía"
+    } else if score >= 50 {
+        "Indicios que requieren revisión"
+    } else if scientific_available && neural_score >= 50.0 {
+        "Señal científica específica de fuente; requiere revisión"
+    } else if matches!(format, "png" | "jpeg") && !scientific_available {
+        "Análisis no concluyente sin perfil científico"
+    } else if score >= 25 {
+        "Indicios débiles o inespecíficos"
+    } else {
+        "Sin indicios relevantes en los métodos ejecutados"
+    }
+}
+
 fn canonical_end(data: &[u8], format: &str) -> Option<usize> {
     match format {
         "png" => {
@@ -506,6 +527,9 @@ fn pixel_analysis(
             }
         }
     }
+    let (protocol_findings, protocol_artifacts) = protocol_artifacts(raw, width, height, name)?;
+    findings.extend(protocol_findings);
+    artifacts.extend(protocol_artifacts);
     Ok((findings, artifacts, scores.into_iter().fold(0.0, f64::max)))
 }
 
@@ -532,6 +556,184 @@ fn lsb_stream(raw: &[u8], plane: u8, channels: &[usize], little: bool) -> Vec<u8
     output
 }
 
+fn zsteg_stream(
+    raw: &[u8],
+    width: usize,
+    height: usize,
+    bit_depth: u8,
+    channels: &[usize],
+    reverse_rows: bool,
+) -> Vec<u8> {
+    let mut output = Vec::with_capacity(raw.len() * bit_depth as usize / 8);
+    let mut byte = 0_u8;
+    let mut used = 0;
+    for row in 0..height {
+        let y = if reverse_rows { height - 1 - row } else { row };
+        for x in 0..width {
+            let pixel = &raw[(y * width + x) * 3..][..3];
+            for channel in channels {
+                for plane in (0..bit_depth).rev() {
+                    byte |= ((pixel[*channel] >> plane) & 1) << (7 - used);
+                    used += 1;
+                    if used == 8 {
+                        output.push(byte);
+                        byte = 0;
+                        used = 0;
+                    }
+                }
+            }
+        }
+    }
+    output
+}
+
+fn protocol_artifacts(
+    raw: &[u8],
+    width: usize,
+    height: usize,
+    name: &str,
+) -> Result<(Vec<Finding>, Vec<Artifact>)> {
+    let mut findings = Vec::new();
+    let mut artifacts = Vec::new();
+
+    let openstego = zsteg_stream(raw, width, height, 1, &[0, 1, 2], false);
+    if let Some(start) = openstego
+        .windows(9)
+        .position(|window| window == b"OPENSTEGO")
+        .filter(|start| start + 18 <= openstego.len())
+    {
+        let version = openstego[start + 9];
+        let data_size = u32::from_le_bytes(openstego[start + 10..start + 14].try_into()?) as usize;
+        let channel_bits = openstego[start + 14];
+        let name_size = openstego[start + 15] as usize;
+        let compressed = openstego[start + 16] != 0;
+        let encrypted = openstego[start + 17] != 0;
+        let name_end = start + 18 + name_size;
+        let end = name_end.saturating_add(data_size);
+        if matches!(version, 1 | 2)
+            && (1..=8).contains(&channel_bits)
+            && data_size > 0
+            && end <= openstego.len()
+            && name_end <= openstego.len()
+            && openstego[start + 18..name_end]
+                .iter()
+                .all(u8::is_ascii_graphic)
+        {
+            let internal_name = String::from_utf8_lossy(&openstego[start + 18..name_end]);
+            let parameters = json!({"plane": 0, "channels": [0, 1, 2], "bit_order": "big", "start": start, "end": end});
+            let id = sha256(serde_json::to_string(&parameters)?.as_bytes())[..16].to_owned();
+            let payload = &openstego[start..end];
+            findings.push(Finding {
+                id: format!("extraction.openstego-{id}"),
+                category: "extraction",
+                title: "Contenedor OpenStego validado".into(),
+                severity: "high",
+                method: "openstego-v1-header",
+                value: json!({"version": version, "data_bytes": data_size, "channel_bits": channel_bits, "filename": internal_name, "compressed": compressed, "encrypted": encrypted}),
+                interpretation: "La cabecera, longitudes y nombre interno forman un contenedor OpenStego coherente.",
+                confidence: 97,
+            });
+            artifacts.push(Artifact {
+                id,
+                kind: "openstego".into(),
+                suggested_name: format!("{}-openstego.bin", file_stem(name)),
+                size: payload.len(),
+                sha256: sha256(payload),
+                description: format!("Contenedor OpenStego; nombre interno: {internal_name}."),
+                extractor: "lsb",
+                parameters,
+                mime: "application/octet-stream".into(),
+            });
+        }
+    }
+
+    let wbstego = zsteg_stream(raw, width, height, 1, &[2, 1, 0], true);
+    if wbstego.len() >= 6 {
+        let declared =
+            wbstego[0] as usize | ((wbstego[1] as usize) << 8) | ((wbstego[2] as usize) << 16);
+        let end = 3_usize.saturating_add(declared);
+        if declared >= 4 && end <= wbstego.len() {
+            let extension = &wbstego[3..6];
+            let message = &wbstego[6..end];
+            let printable = message
+                .iter()
+                .all(|byte| matches!(byte, b'\t' | b'\n' | b'\r' | 0x20..=0x7e));
+            let meaningful = message
+                .iter()
+                .filter(|byte| !matches!(byte, b'\t' | b'\n' | b'\r' | b' '))
+                .count();
+            if extension.iter().all(u8::is_ascii_alphanumeric) && printable && meaningful >= 8 {
+                let extension = String::from_utf8_lossy(extension).to_ascii_lowercase();
+                let parameters = json!({"bit_depth": 1, "channels": [2, 1, 0], "reverse_rows": true, "start": 6, "end": end});
+                let id = sha256(serde_json::to_string(&parameters)?.as_bytes())[..16].to_owned();
+                findings.push(Finding {
+                    id: format!("extraction.wbstego-{id}"),
+                    category: "extraction",
+                    title: "Carga wbStego sin cifrar validada".into(),
+                    severity: "high",
+                    method: "wbstego-plain-header",
+                    value: json!({"declared_bytes": declared, "extension": extension}),
+                    interpretation: "El tamaño declarado, la extensión y el contenido forman una carga wbStego coherente.",
+                    confidence: 96,
+                });
+                artifacts.push(Artifact {
+                    id,
+                    kind: "wbstego-text".into(),
+                    suggested_name: format!("{}-wbstego.{extension}", file_stem(name)),
+                    size: message.len(),
+                    sha256: sha256(message),
+                    description: "Texto sin cifrar recuperado de una carga wbStego.".into(),
+                    extractor: "lsb-zsteg",
+                    parameters,
+                    mime: "text/plain".into(),
+                });
+            }
+        }
+    }
+
+    for bit_depth in 2..=4 {
+        let stream = zsteg_stream(raw, width, height, bit_depth, &[0, 1, 2], false);
+        let Some(end) = stream.iter().position(|byte| *byte == 0) else {
+            continue;
+        };
+        if end < 12
+            || stream.get(end..end + 4) != Some(&[0, 0, 0, 0])
+            || !stream[..end]
+                .iter()
+                .all(|byte| matches!(byte, b'\t' | b'\n' | b'\r' | 0x20..=0x7e))
+        {
+            continue;
+        }
+        let parameters = json!({"bit_depth": bit_depth, "channels": [0, 1, 2], "reverse_rows": false, "start": 0, "end": end});
+        let id = sha256(serde_json::to_string(&parameters)?.as_bytes())[..16].to_owned();
+        let payload = &stream[..end];
+        findings.push(Finding {
+            id: format!("extraction.multibit-text-{id}"),
+            category: "extraction",
+            title: format!("Texto en {bit_depth} bits bajos por canal"),
+            severity: "high",
+            method: "multibit-lsb-text",
+            value: json!({"bit_depth": bit_depth, "bytes": payload.len(), "channels": "RGB"}),
+            interpretation: "Una secuencia ASCII terminada en nulos ocupa varios bits bajos de cada canal.",
+            confidence: 95,
+        });
+        artifacts.push(Artifact {
+            id,
+            kind: "lsb-text".into(),
+            suggested_name: format!("{}-{bit_depth}bit-lsb.txt", file_stem(name)),
+            size: payload.len(),
+            sha256: sha256(payload),
+            description: format!("Texto recuperado de los {bit_depth} bits bajos RGB."),
+            extractor: "lsb-zsteg",
+            parameters,
+            mime: "text/plain".into(),
+        });
+        break;
+    }
+
+    Ok((findings, artifacts))
+}
+
 fn validated_payload_end(stream: &[u8], start: usize, kind: &str) -> Option<usize> {
     let payload = stream.get(start..)?;
     let relative_end = match kind {
@@ -544,7 +746,16 @@ fn validated_payload_end(stream: &[u8], start: usize, kind: &str) -> Option<usiz
                 .ok()?;
             end
         }
-        "pdf" => canonical_end(payload, "pdf")?,
+        "pdf" => {
+            let end = canonical_end(payload, "pdf")?;
+            let document = &payload[..end];
+            if !document.windows(9).any(|window| window == b"startxref")
+                || !document.windows(8).any(|window| window == b"/Catalog")
+            {
+                return None;
+            }
+            end
+        }
         "zip" => {
             let eocd = payload
                 .windows(4)
@@ -563,7 +774,6 @@ fn validated_payload_end(stream: &[u8], start: usize, kind: &str) -> Option<usiz
             }
             eocd.checked_add(22 + comment)?
         }
-        _ if payload.len() >= 32 => payload.len(),
         _ => return None,
     };
     start
@@ -573,7 +783,8 @@ fn validated_payload_end(stream: &[u8], start: usize, kind: &str) -> Option<usiz
 
 fn valid_signature(stream: &[u8], signature: &[u8], kind: &str) -> Option<(usize, usize)> {
     let mut search = 0;
-    while search + signature.len() <= stream.len() {
+    let mut attempts = 0;
+    while search + signature.len() <= stream.len() && attempts < 64 {
         let relative = stream[search..]
             .windows(signature.len())
             .position(|window| window == signature)?;
@@ -581,6 +792,7 @@ fn valid_signature(stream: &[u8], signature: &[u8], kind: &str) -> Option<(usize
         if let Some(end) = validated_payload_end(stream, start, kind) {
             return Some((start, end));
         }
+        attempts += 1;
         search = start + 1;
     }
     None
@@ -671,15 +883,7 @@ fn analyze(path: &Path) -> Result<Report> {
         });
     }
     let score = structural_score.max((statistical_score * 0.72).min(72.0) as u8);
-    let verdict = if score >= 75 {
-        "Indicios fuertes compatibles con esteganografía"
-    } else if score >= 50 {
-        "Indicios que requieren revisión"
-    } else if score >= 25 {
-        "Indicios débiles o inespecíficos"
-    } else {
-        "Sin indicios relevantes en los métodos ejecutados"
-    };
+    let verdict = evidence_verdict(score, scientific.available, neural_score, format);
     let mut methods = vec!["container-boundary", "signature-carving"];
     if matches!(format, "png" | "gif") {
         methods.extend([
@@ -688,10 +892,23 @@ fn analyze(path: &Path) -> Result<Report> {
             "subsequent-embedding-calibration",
             "tiled-low-order-steganalysis",
             "lsb-signature-carving",
+            "openstego-v1-header",
+            "wbstego-plain-header",
+            "multibit-lsb-text",
         ]);
     }
     if scientific.available {
         methods.push("aletheia-effnetb0-alaska2");
+    }
+    let mut limitations = vec![
+        "La puntuación no es una probabilidad calibrada.",
+        "Un negativo no demuestra ausencia y un positivo no identifica por sí solo el algoritmo.",
+        "La extracción genérica no puede descifrar cargas protegidas por clave.",
+    ];
+    if matches!(format, "png" | "jpeg") && !scientific.available {
+        limitations.push(
+            "No se ejecutaron detectores neuronales específicos de fuente; el resultado PNG/JPEG no puede considerarse negativo.",
+        );
     }
     Ok(Report {
         schema_version: "1.0",
@@ -707,11 +924,7 @@ fn analyze(path: &Path) -> Result<Report> {
         artifacts,
         scientific,
         methods,
-        limitations: vec![
-            "La puntuación no es una probabilidad calibrada.",
-            "Un negativo no demuestra ausencia y un positivo no identifica por sí solo el algoritmo.",
-            "La extracción genérica no puede descifrar cargas protegidas por clave.",
-        ],
+        limitations,
     })
 }
 
@@ -727,7 +940,7 @@ fn artifact_bytes(path: &Path, artifact_id: &str) -> Result<(Artifact, Vec<u8>)>
         data[artifact.parameters["start"].as_u64().unwrap() as usize
             ..artifact.parameters["end"].as_u64().unwrap() as usize]
             .to_vec()
-    } else {
+    } else if artifact.extractor == "lsb" {
         let image = ImageReader::new(std::io::Cursor::new(data))
             .with_guessed_format()?
             .decode()?
@@ -742,6 +955,23 @@ fn artifact_bytes(path: &Path, artifact_id: &str) -> Result<(Artifact, Vec<u8>)>
         stream[artifact.parameters["start"].as_u64().unwrap() as usize
             ..artifact.parameters["end"].as_u64().unwrap() as usize]
             .to_vec()
+    } else {
+        let image = ImageReader::new(std::io::Cursor::new(data))
+            .with_guessed_format()?
+            .decode()?
+            .to_rgb8();
+        let channels: Vec<usize> = serde_json::from_value(artifact.parameters["channels"].clone())?;
+        let stream = zsteg_stream(
+            image.as_raw(),
+            image.width() as usize,
+            image.height() as usize,
+            artifact.parameters["bit_depth"].as_u64().unwrap() as u8,
+            &channels,
+            artifact.parameters["reverse_rows"].as_bool().unwrap(),
+        );
+        stream[artifact.parameters["start"].as_u64().unwrap() as usize
+            ..artifact.parameters["end"].as_u64().unwrap() as usize]
+            .to_vec()
     };
     if sha256(&payload) != artifact.sha256 {
         bail!("La verificación SHA-256 del artefacto ha fallado");
@@ -749,7 +979,7 @@ fn artifact_bytes(path: &Path, artifact_id: &str) -> Result<(Artifact, Vec<u8>)>
     Ok((artifact, payload))
 }
 
-fn auc(negative: &[u8], positive: &[u8]) -> Result<f64> {
+fn auc(negative: &[f64], positive: &[f64]) -> Result<f64> {
     if negative.is_empty() || positive.is_empty() {
         bail!("Se necesita al menos un archivo cover y otro stego");
     }
@@ -865,16 +1095,93 @@ fn run() -> Result<()> {
             )
         }
         Commands::Benchmark { cover, stego } => {
-            let covers: Vec<u8> = files(&cover, false)
+            let covers: Vec<Report> = files(&cover, false)
                 .iter()
-                .map(|path| analyze(path).map(|report| report.score))
+                .map(|path| analyze(path))
                 .collect::<Result<_>>()?;
-            let stegos: Vec<u8> = files(&stego, false)
+            let stegos: Vec<Report> = files(&stego, false)
                 .iter()
-                .map(|path| analyze(path).map(|report| report.score))
+                .map(|path| analyze(path))
                 .collect::<Result<_>>()?;
+            let heuristic_covers: Vec<_> =
+                covers.iter().map(|report| report.score as f64).collect();
+            let heuristic_stegos: Vec<_> =
+                stegos.iter().map(|report| report.score as f64).collect();
+            let scientific_covers: Vec<_> = covers
+                .iter()
+                .filter(|report| report.scientific.available)
+                .map(|report| {
+                    report
+                        .scientific
+                        .predictions
+                        .values()
+                        .copied()
+                        .fold(0.0, f64::max)
+                })
+                .collect();
+            let scientific_stegos: Vec<_> = stegos
+                .iter()
+                .filter(|report| report.scientific.available)
+                .map(|report| {
+                    report
+                        .scientific
+                        .predictions
+                        .values()
+                        .copied()
+                        .fold(0.0, f64::max)
+                })
+                .collect();
+            let combined_covers: Vec<_> = covers
+                .iter()
+                .map(|report| {
+                    (report.score as f64 / 100.0).max(
+                        report
+                            .scientific
+                            .predictions
+                            .values()
+                            .copied()
+                            .fold(0.0, f64::max),
+                    )
+                })
+                .collect();
+            let combined_stegos: Vec<_> = stegos
+                .iter()
+                .map(|report| {
+                    (report.score as f64 / 100.0).max(
+                        report
+                            .scientific
+                            .predictions
+                            .values()
+                            .copied()
+                            .fold(0.0, f64::max),
+                    )
+                })
+                .collect();
+            let scientific = if scientific_covers.is_empty() || scientific_stegos.is_empty() {
+                Value::Null
+            } else {
+                json!({
+                    "score_kind": "source_specific_model_response",
+                    "cover_files": scientific_covers.len(),
+                    "stego_files": scientific_stegos.len(),
+                    "roc_auc": auc(&scientific_covers, &scientific_stegos)?,
+                    "warning": "Respuesta máxima entre modelos; no es una probabilidad calibrada y el resultado es específico del corpus."
+                })
+            };
             print_value(
-                &json!({"score_kind": "heuristic_evidence_score", "cover_files": covers.len(), "stego_files": stegos.len(), "roc_auc": auc(&covers, &stegos)?, "warning": "Resultado específico de este corpus."}),
+                &json!({
+                    "score_kind": "heuristic_evidence_score",
+                    "cover_files": covers.len(),
+                    "stego_files": stegos.len(),
+                    "roc_auc": auc(&heuristic_covers, &heuristic_stegos)?,
+                    "scientific": scientific,
+                    "combined": {
+                        "score_kind": "evidence_envelope_rank",
+                        "roc_auc": auc(&combined_covers, &combined_stegos)?,
+                        "warning": "Máximo entre evidencia nativa normalizada y respuesta científica; sirve para ordenar este corpus, no es una probabilidad calibrada."
+                    },
+                    "warning": "Resultado específico de este corpus."
+                }),
                 cli.json,
             )
         }
@@ -891,6 +1198,31 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn embed_zsteg(
+        payload: &[u8],
+        bit_depth: u8,
+        channels: &[usize],
+        reverse_rows: bool,
+    ) -> Vec<u8> {
+        let width = 96;
+        let height = 96;
+        let mut raw = vec![128_u8; width * height * 3];
+        let slots_per_pixel = bit_depth as usize * channels.len();
+        for index in 0..payload.len() * 8 {
+            let bit = (payload[index / 8] >> (7 - index % 8)) & 1;
+            let pixel_index = index / slots_per_pixel;
+            let slot = index % slots_per_pixel;
+            let row = pixel_index / width;
+            let y = if reverse_rows { height - 1 - row } else { row };
+            let x = pixel_index % width;
+            let channel = channels[slot / bit_depth as usize];
+            let plane = bit_depth - 1 - (slot % bit_depth as usize) as u8;
+            let target = (y * width + x) * 3 + channel;
+            raw[target] = (raw[target] & !(1 << plane)) | (bit << plane);
+        }
+        raw
+    }
 
     #[test]
     fn identifies_png_and_trailing_zip() {
@@ -931,5 +1263,42 @@ mod tests {
         let (start, end) = valid_signature(&stream, b"\xff\xd8\xff", "jpeg").unwrap();
         assert_eq!(start, expected_start);
         assert_eq!(end, stream.len());
+    }
+
+    #[test]
+    fn source_specific_signal_never_reads_as_absence() {
+        assert_eq!(
+            evidence_verdict(0, true, 98.0, "jpeg"),
+            "Señal científica específica de fuente; requiere revisión"
+        );
+        assert_eq!(
+            evidence_verdict(0, false, 98.0, "jpeg"),
+            "Análisis no concluyente sin perfil científico"
+        );
+        assert_eq!(
+            evidence_verdict(0, false, 0.0, "pdf"),
+            "Sin indicios relevantes en los métodos ejecutados"
+        );
+    }
+
+    #[test]
+    fn protocol_extractors_cover_openstego_wbstego_and_multibit_text() {
+        let mut openstego = b"OPENSTEGO\x01\x04\x00\x00\x00\x01\x08\x01\x01flag.txt".to_vec();
+        openstego.extend_from_slice(b"data");
+        let raw = embed_zsteg(&openstego, 1, &[0, 1, 2], false);
+        let (_, artifacts) = protocol_artifacts(&raw, 96, 96, "open.png").unwrap();
+        assert!(artifacts.iter().any(|item| item.kind == "openstego"));
+
+        let message = b"SuperSecretMessage\n";
+        let mut wbstego = (message.len() as u32 + 3).to_le_bytes()[..3].to_vec();
+        wbstego.extend_from_slice(b"txt");
+        wbstego.extend_from_slice(message);
+        let raw = embed_zsteg(&wbstego, 1, &[2, 1, 0], true);
+        let (_, artifacts) = protocol_artifacts(&raw, 96, 96, "wb.png").unwrap();
+        assert!(artifacts.iter().any(|item| item.kind == "wbstego-text"));
+
+        let raw = embed_zsteg(b"SuperSecretMessage\0\0\0\0", 3, &[0, 1, 2], false);
+        let (_, artifacts) = protocol_artifacts(&raw, 96, 96, "rgb3.png").unwrap();
+        assert!(artifacts.iter().any(|item| item.kind == "lsb-text"));
     }
 }

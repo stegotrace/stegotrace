@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f6f5f1"/>
+  <path d="M56 56h1088v518H56z" fill="none" stroke="#171715" stroke-width="2"/>
+  <path d="M56 458h1088M808 56v518" fill="none" stroke="#9a9890" stroke-width="2"/>
+  <text x="104" y="146" fill="#171715" font-family="monospace" font-size="34" font-weight="600">Stego<tspan fill="#b5231f">Trace</tspan></text>
+  <text x="104" y="272" fill="#171715" font-family="Arial, sans-serif" font-size="72" font-weight="500">Hidden data.</text>
+  <text x="104" y="356" fill="#171715" font-family="Arial, sans-serif" font-size="72" font-weight="500">Verifiable evidence.</text>
+  <text x="104" y="512" fill="#64635e" font-family="monospace" font-size="21">WEB ANALYZER / NATIVE macOS CLI</text>
+  <g transform="translate(872 148)" fill="none" stroke="#b5231f" stroke-width="10">
+    <path d="M0 0h208v258H0z"/>
+    <path d="M34 72h140M34 116h92M34 160h140M34 204h62"/>
+  </g>
+</svg>
