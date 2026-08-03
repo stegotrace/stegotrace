@@ -14,8 +14,13 @@ Web: <https://stegotrace.guillermozubikarai.dev> · API: <https://stegotrace-api
 La CLI es un binario Rust nativo para macOS y no necesita Python ni Rust en ejecución. Instalación:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/kattulus1997/stegotrace/main/install.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://stegotrace.guillermozubikarai.dev/install.sh | sh
 ```
+
+El instalador y los binarios se sirven gratuitamente desde el dominio de StegoTrace. La instalación
+no consulta GitHub: detecta la arquitectura del Mac, descarga el archivo versionado y valida su
+SHA-256 antes de copiar el ejecutable. Usa un binario nativo en Apple Silicon y otro en Intel, por
+lo que no requiere Rosetta, Rust ni Python.
 
 Después:
 

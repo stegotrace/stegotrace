@@ -4,6 +4,7 @@ import type { Artifact, Report } from "./types";
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "http://localhost:8000";
 const MAX_BYTES = 25 * 1024 * 1024;
 const SAMPLE_URL = "https://github.com/kattulus1997/stegotrace/raw/refs/heads/main/samples/stegotrace-lsb-zip.png";
+const INSTALL_COMMAND = "curl --proto '=https' --tlsv1.2 -LsSf https://stegotrace.guillermozubikarai.dev/install.sh | sh";
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -158,13 +159,13 @@ function UploadView({ onReport }: { onReport: (file: File, report: Report) => vo
         <div className="cli-intro">
           <span>CLI para macOS · Rust nativo</span>
           <h2>Procesa el archivo en tu Mac</h2>
-          <p>El instalador detecta Apple Silicon o Intel y comprueba el SHA-256 del binario antes de activar <code>stegotrace</code>.</p>
-          <a href="https://github.com/kattulus1997/stegotrace/releases/latest">Ver release y checksums</a>
+          <p>La descarga es gratuita y se sirve desde este dominio. Instala el binario nativo para Apple Silicon o Intel, comprueba su SHA-256 y no requiere Rosetta, Rust ni Python.</p>
+          <a href="/cli/v0.2.0/SHA256SUMS.txt">Ver binarios y checksums</a>
         </div>
         <div className="cli-commands">
           <CommandLine
             label="Instalar"
-            command="curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/kattulus1997/stegotrace/main/install.sh | sh"
+            command={INSTALL_COMMAND}
           />
           <CommandLine label="Analizar" command="stegotrace --json scan imagen.png > informe.json" />
           <CommandLine label="Añadir Aletheia" command="stegotrace models install" />

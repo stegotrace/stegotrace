@@ -11,5 +11,7 @@ sin abrirlas ni ejecutarlas. La puntuación es evidencia heurística, no una pro
 
 ## CLI macOS
 
-Instalación: consulte el README del repositorio. Los modelos Aletheia son opcionales, se verifican
-por SHA-256 y sus respuestas están sujetas a cover-source mismatch.
+Instalación gratuita, sin depender de GitHub:
+`curl --proto '=https' --tlsv1.2 -LsSf https://stegotrace.guillermozubikarai.dev/install.sh | sh`.
+Los modelos Aletheia son opcionales, se verifican por SHA-256 y sus respuestas están sujetas a
+cover-source mismatch.
