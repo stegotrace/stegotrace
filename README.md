@@ -7,6 +7,8 @@ los informes JSON incluyen SHA-256, método, evidencia, limitaciones y procedenc
 > Una puntuación es evidencia heurística, no una probabilidad ni una prueba de ausencia/presencia.
 > La extracción genérica no puede descifrar cargas protegidas por una clave desconocida.
 
+Web: <https://stegotrace.guillermozubikarai.dev> · API: <https://stegotrace-api.guillermozubikarai.dev/docs>
+
 ## CLI
 
 La CLI es un binario Rust nativo para macOS y no necesita Python ni Rust en ejecución. Instalación:
@@ -62,6 +64,10 @@ planos, análisis PCM, re-embebido contrafactual, mapas locales y una búsqueda 
 JPEG QF100 basada en Levecque–Butora–Bas. Aletheia puede aportar modelos específicos; si no está
 configurado, el informe lo declara y no inventa una predicción. La metodología, referencias y límites
 están en [docs/RESEARCH.md](docs/RESEARCH.md).
+
+La CLI Rust ejecuta estructura, firmas, χ², RS, entropía/runs, re-embebido, mapa local y extracción
+LSB. La búsqueda de antecedentes JPEG QF100 requiere coeficientes DCT y se ejecuta actualmente en la
+API; el adaptador Aletheia es opcional en ambas superficies.
 
 ## Formatos y seguridad
 

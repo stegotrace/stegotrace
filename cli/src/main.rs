@@ -304,6 +304,119 @@ fn runs(bits: &[u8]) -> (i64, f64) {
     )
 }
 
+fn rs_symmetry(values: &[u8]) -> f64 {
+    let mut regular_positive = 0_i64;
+    let mut singular_positive = 0_i64;
+    let mut regular_negative = 0_i64;
+    let mut singular_negative = 0_i64;
+    for group in values.chunks_exact(4) {
+        let discrimination = |samples: &[u8; 4]| {
+            samples
+                .windows(2)
+                .map(|pair| (pair[0] as i16 - pair[1] as i16).unsigned_abs() as i64)
+                .sum::<i64>()
+        };
+        let base: [u8; 4] = group.try_into().expect("chunk size");
+        let positive = base.map(|value| {
+            if value % 2 == 0 {
+                value.saturating_add(1)
+            } else {
+                value.saturating_sub(1)
+            }
+        });
+        let negative = base.map(|value| {
+            if value % 2 == 0 {
+                value.saturating_sub(1)
+            } else {
+                value.saturating_add(1)
+            }
+        });
+        let reference = discrimination(&base);
+        match discrimination(&positive).cmp(&reference) {
+            std::cmp::Ordering::Greater => regular_positive += 1,
+            std::cmp::Ordering::Less => singular_positive += 1,
+            _ => {}
+        }
+        match discrimination(&negative).cmp(&reference) {
+            std::cmp::Ordering::Greater => regular_negative += 1,
+            std::cmp::Ordering::Less => singular_negative += 1,
+            _ => {}
+        }
+    }
+    let groups = (values.len() / 4).max(1) as f64;
+    (1.0 - ((regular_positive - regular_negative).abs()
+        + (singular_positive - singular_negative).abs()) as f64
+        / (2.0 * groups))
+        .clamp(0.0, 1.0)
+}
+
+fn low_order_score(raw: &[u8]) -> f64 {
+    (0..3)
+        .map(|channel| {
+            let values: Vec<u8> = raw.iter().skip(channel).step_by(3).copied().collect();
+            let bits: Vec<u8> = values.iter().map(|value| value & 1).collect();
+            let (_, p) = chi_square(&values);
+            100.0 * (0.55 * p + 0.25 * entropy(&bits) + 0.20 * rs_symmetry(&values))
+        })
+        .fold(0.0, f64::max)
+}
+
+fn counterfactual(raw: &[u8]) -> Value {
+    let base = low_order_score(raw);
+    let count = (raw.len() / 10).max(1);
+    let mut scores = Vec::new();
+    for seed in 0..5_usize {
+        let mut candidate = raw.to_vec();
+        for step in 0..count {
+            let index = step
+                .wrapping_mul(2_654_435_761)
+                .wrapping_add(seed.wrapping_mul(97_531))
+                % candidate.len();
+            let bit =
+                ((step.wrapping_mul(1_103_515_245).wrapping_add(seed * 12_345)) >> 16) as u8 & 1;
+            candidate[index] = (candidate[index] & 0xfe) | bit;
+        }
+        scores.push(low_order_score(&candidate));
+    }
+    let mean = scores.iter().sum::<f64>() / scores.len() as f64;
+    let deviation = (scores
+        .iter()
+        .map(|score| (score - mean).powi(2))
+        .sum::<f64>()
+        / scores.len() as f64)
+        .sqrt();
+    json!({"payload_fraction": 0.10, "repeats": 5, "base_score": base, "reembedded_mean_score": mean, "response_delta": mean - base, "response_std": deviation})
+}
+
+fn local_map(raw: &[u8], width: usize, height: usize) -> Value {
+    let tile_size = 128;
+    let mut tiles = Vec::new();
+    for y in (0..height).step_by(tile_size) {
+        for x in (0..width).step_by(tile_size) {
+            let tile_width = tile_size.min(width - x);
+            let tile_height = tile_size.min(height - y);
+            if tile_width * tile_height < 1024 {
+                continue;
+            }
+            let mut tile = Vec::with_capacity(tile_width * tile_height * 3);
+            for row in y..y + tile_height {
+                let start = (row * width + x) * 3;
+                tile.extend_from_slice(&raw[start..start + tile_width * 3]);
+            }
+            tiles.push(json!({"x": x, "y": y, "width": tile_width, "height": tile_height, "score": low_order_score(&tile)}));
+        }
+    }
+    tiles.sort_by(|a, b| {
+        b["score"]
+            .as_f64()
+            .partial_cmp(&a["score"].as_f64())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let analyzed = tiles.len();
+    tiles.truncate(12);
+    json!({"tile_size": tile_size, "tiles_analyzed": analyzed, "top_tiles": tiles})
+}
+
 fn pixel_analysis(
     data: &[u8],
     name: &str,
@@ -319,6 +432,8 @@ fn pixel_analysis(
         bail!("La imagen excede 40 megapíxeles");
     }
     let rgb = image.to_rgb8();
+    let width = rgb.width() as usize;
+    let height = rgb.height() as usize;
     let raw = rgb.as_raw();
     let mut findings = Vec::new();
     let mut scores = Vec::new();
@@ -328,14 +443,28 @@ fn pixel_analysis(
         let (chi, p) = chi_square(&values);
         let (run_count, z) = runs(&bits);
         let bit_entropy = entropy(&bits);
-        scores.push(100.0 * (0.55 * p + 0.45 * bit_entropy));
+        let rs = rs_symmetry(&values);
+        scores.push(100.0 * (0.55 * p + 0.25 * bit_entropy + 0.20 * rs));
         findings.push(Finding {
             id: format!("statistics.lsb-{}", label.to_lowercase()), category: "statistics", title: format!("LSB · {label}"),
             severity: if p > 0.95 { "medium" } else { "info" }, method: "chi-square-entropy-runs",
-            value: json!({"chi_square": chi, "p_value": p, "entropy": bit_entropy, "runs": run_count, "z_score": z}),
+            value: json!({"chi_square": chi, "p_value": p, "entropy": bit_entropy, "runs": run_count, "z_score": z, "rs_symmetry": rs}),
             interpretation: "Equiprobabilidad y aleatoriedad son compatibles con sustitución LSB, pero no son específicas.", confidence: (35.0 + 47.0 * p).min(82.0) as u8,
         });
     }
+    let counterfactual_value = counterfactual(raw);
+    let saturated = counterfactual_value["response_delta"]
+        .as_f64()
+        .unwrap_or_default()
+        < 2.0;
+    findings.push(Finding {
+        id: "frontier.counterfactual-reembedding".into(), category: "frontier", title: "Calibración contrafactual por re-embebido".into(), severity: if saturated { "medium" } else { "info" }, method: "subsequent-embedding-calibration", value: counterfactual_value,
+        interpretation: "Una respuesta saturada es compatible con modificación previa, pero depende de fuente y algoritmo.", confidence: if saturated { 66 } else { 48 },
+    });
+    findings.push(Finding {
+        id: "frontier.local-evidence-map".into(), category: "frontier", title: "Mapa local de evidencia".into(), severity: "info", method: "tiled-low-order-steganalysis", value: local_map(raw, width, height),
+        interpretation: "Localiza regiones para revisión; no segmenta de forma concluyente los bits modificados.", confidence: 58,
+    });
     let mut artifacts = Vec::new();
     for plane in 0..2 {
         for channels in [&[0_usize, 1, 2][..], &[0][..], &[1][..], &[2][..]] {
@@ -447,7 +576,13 @@ fn analyze(path: &Path) -> Result<Report> {
     };
     let mut methods = vec!["container-boundary", "signature-carving"];
     if matches!(format, "png" | "gif") {
-        methods.extend(["chi-square-entropy-runs", "lsb-signature-carving"]);
+        methods.extend([
+            "chi-square-entropy-runs",
+            "regular-singular-analysis",
+            "subsequent-embedding-calibration",
+            "tiled-low-order-steganalysis",
+            "lsb-signature-carving",
+        ]);
     }
     Ok(Report {
         schema_version: "1.0",
@@ -551,7 +686,7 @@ fn run() -> Result<()> {
             cli.json,
         ),
         Commands::Methods => print_value(
-            &json!({"structure": ["container-boundary", "signature-carving"], "statistics": ["chi-square", "entropy", "runs"], "frontier_web": ["bounded JPEG antecedent search", "counterfactual re-embedding", "local evidence map"], "scientific": ["Aletheia adapter (optional)"], "extraction": ["byte slices", "signature-anchored LSB streams"]}),
+            &json!({"structure": ["container-boundary", "signature-carving"], "statistics": ["chi-square", "RS", "entropy", "runs"], "frontier_native": ["counterfactual re-embedding", "local evidence map"], "frontier_api": ["bounded JPEG antecedent search"], "scientific": ["Aletheia adapter (optional)"], "extraction": ["byte slices", "signature-anchored LSB streams"]}),
             cli.json,
         ),
         Commands::Models => print_value(
