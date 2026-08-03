@@ -23,7 +23,8 @@ probabilidad calibrada ni una prueba de contenido ilícito.
   como líneas de frontera de Aletheia, no como capacidades ejecutadas por el perfil instalado. Una
   respuesta de red no eleva por sí sola el score fusionado: requiere calibración representativa de
   la fuente para evitar que el desajuste de dominio se convierta en un falso positivo dominante.
-- Extracción: datos anexos y flujos LSB con firma reconocible. Los artefactos se copian como bytes;
+- Extracción: datos anexos y flujos LSB con firma, final de contenedor coherente y, para imágenes,
+  decodificación válida. Se extrae solo el tramo validado; los artefactos se copian como bytes y
   nunca se montan, descomprimen ni ejecutan.
 
 ## Frontera incorporada y límites
