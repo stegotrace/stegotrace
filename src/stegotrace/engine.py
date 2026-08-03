@@ -9,14 +9,13 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
-from . import statistics
+from . import __version__, statistics
 from .jpeg_compatibility import analyze_jpeg_compatibility
 from .models import AnalysisReport, Artifact, Finding
 from .scientific import analyze_with_aletheia
 from .structure import SIGNATURES, analyze_structure
 
 Image.MAX_IMAGE_PIXELS = 40_000_000
-ENGINE_VERSION = "0.1.0"
 MAX_DECODED_VALUES = 120_000_000
 
 
@@ -292,7 +291,7 @@ def analyze_file(path: str | Path, *, filename: str | None = None) -> AnalysisRe
         )
     return AnalysisReport(
         schema_version="1.0",
-        engine_version=ENGINE_VERSION,
+        engine_version=__version__,
         filename=display_name,
         media_type=structure.media_type,
         size=len(data),
