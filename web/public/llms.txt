@@ -1,0 +1,15 @@
+# StegoTrace
+
+StegoTrace analiza archivos para detectar indicios de esteganografía y extraer cargas recuperables
+sin abrirlas ni ejecutarlas. La puntuación es evidencia heurística, no una probabilidad calibrada.
+
+## Superficies
+
+- [Aplicación web](https://stegotrace.guillermozubikarai.dev)
+- [API y OpenAPI](https://stegotrace-api.guillermozubikarai.dev/docs)
+- [Código, CLI e investigación](https://github.com/kattulus1997/stegotrace)
+
+## CLI macOS
+
+Instalación: consulte el README del repositorio. Los modelos Aletheia son opcionales, se verifican
+por SHA-256 y sus respuestas están sujetas a cover-source mismatch.

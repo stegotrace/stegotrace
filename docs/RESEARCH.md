@@ -16,9 +16,13 @@ probabilidad calibrada ni una prueba de contenido ilícito.
   bloques, calibración contrafactual mediante re-embebido posterior y mapas locales de evidencia.
   El modo online informa timeouts sin convertirlos en incompatibilidades; el LRT completo requiere
   probabilidades específicas de la tubería de compresión.
-- Modelo científico: adaptador de Aletheia con timeout y fallo seguro. Sus redes entrenadas (incluidos
-  EfficientNet/SRNet y DCI en su distribución) deben interpretarse en el contexto de su dominio de
-  entrenamiento y del *cover-source mismatch*.
+- Modelo científico: `stegotrace models install` incorpora un perfil reproducible de Aletheia fijado
+  al commit `1baf974e`: EfficientNet-B0 para LSBM/HILL espacial y J-UNIWARD/Steghide JPEG, con SHA-256
+  por peso, runtime aislado, timeout y fallo seguro. Las respuestas son específicas de ALASKA2 y
+  deben interpretarse en el contexto del *cover-source mismatch*. SRNet y DCI permanecen documentados
+  como líneas de frontera de Aletheia, no como capacidades ejecutadas por el perfil instalado. Una
+  respuesta de red no eleva por sí sola el score fusionado: requiere calibración representativa de
+  la fuente para evitar que el desajuste de dominio se convierta en un falso positivo dominante.
 - Extracción: datos anexos y flujos LSB con firma reconocible. Los artefactos se copian como bytes;
   nunca se montan, descomprimen ni ejecutan.
 

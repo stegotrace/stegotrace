@@ -14,6 +14,8 @@ use sha2::{Digest, Sha256};
 use statrs::distribution::{ChiSquared, ContinuousCDF};
 use walkdir::WalkDir;
 
+mod managed_models;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const MAX_PIXELS: u64 = 40_000_000;
 
@@ -67,8 +69,19 @@ enum Commands {
         #[arg(long)]
         stego: PathBuf,
     },
-    /// Muestra el estado del adaptador neuronal externo.
-    Models,
+    /// Instala y consulta modelos científicos gestionados.
+    Models {
+        #[command(subcommand)]
+        command: ModelCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModelCommands {
+    /// Instala el perfil Aletheia core con pesos verificados.
+    Install,
+    /// Verifica entorno, pesos, versión y procedencia.
+    Status,
 }
 
 #[derive(Clone, Serialize)]
@@ -471,15 +484,12 @@ fn pixel_analysis(
             for little in [false, true] {
                 let stream = lsb_stream(raw, plane, channels, little);
                 for (signature, kind, mime) in SIGNATURES {
-                    if let Some(offset) = stream
-                        .windows(signature.len())
-                        .position(|window| window == *signature)
-                    {
-                        let parameters = json!({"plane": plane, "channels": channels, "bit_order": if little {"little"} else {"big"}, "start": offset, "end": stream.len()});
+                    if let Some((start, end)) = valid_signature(&stream, signature, kind) {
+                        let parameters = json!({"plane": plane, "channels": channels, "bit_order": if little {"little"} else {"big"}, "start": start, "end": end});
                         let id =
                             sha256(serde_json::to_string(&parameters)?.as_bytes())[..16].to_owned();
-                        let payload = &stream[offset..];
-                        findings.push(Finding { id: format!("extraction.lsb-{id}"), category: "extraction", title: format!("Firma {} en flujo LSB", kind.to_uppercase()), severity: "high", method: "lsb-signature-carving", value: parameters.clone(), interpretation: "La reconstrucción de bits contiene una firma conocida.", confidence: 94 });
+                        let payload = &stream[start..end];
+                        findings.push(Finding { id: format!("extraction.lsb-{id}"), category: "extraction", title: format!("Contenedor {} válido en flujo LSB", kind.to_uppercase()), severity: "high", method: "lsb-signature-carving", value: parameters.clone(), interpretation: "La reconstrucción de bits contiene una firma y un final de contenedor coherentes.", confidence: 96 });
                         artifacts.push(Artifact {
                             id,
                             kind: format!("lsb-{kind}"),
@@ -522,7 +532,89 @@ fn lsb_stream(raw: &[u8], plane: u8, channels: &[usize], little: bool) -> Vec<u8
     output
 }
 
+fn validated_payload_end(stream: &[u8], start: usize, kind: &str) -> Option<usize> {
+    let payload = stream.get(start..)?;
+    let relative_end = match kind {
+        "jpeg" | "png" | "gif" => {
+            let end = canonical_end(payload, kind)?;
+            ImageReader::new(std::io::Cursor::new(&payload[..end]))
+                .with_guessed_format()
+                .ok()?
+                .decode()
+                .ok()?;
+            end
+        }
+        "pdf" => canonical_end(payload, "pdf")?,
+        "zip" => {
+            let eocd = payload
+                .windows(4)
+                .position(|window| window == b"PK\x05\x06")?;
+            if eocd + 22 > payload.len() {
+                return None;
+            }
+            let comment =
+                u16::from_le_bytes(payload[eocd + 20..eocd + 22].try_into().ok()?) as usize;
+            let directory_size =
+                u32::from_le_bytes(payload[eocd + 12..eocd + 16].try_into().ok()?) as usize;
+            let directory_start =
+                u32::from_le_bytes(payload[eocd + 16..eocd + 20].try_into().ok()?) as usize;
+            if directory_start.checked_add(directory_size)? > eocd {
+                return None;
+            }
+            eocd.checked_add(22 + comment)?
+        }
+        _ if payload.len() >= 32 => payload.len(),
+        _ => return None,
+    };
+    start
+        .checked_add(relative_end)
+        .filter(|end| *end <= stream.len())
+}
+
+fn valid_signature(stream: &[u8], signature: &[u8], kind: &str) -> Option<(usize, usize)> {
+    let mut search = 0;
+    while search + signature.len() <= stream.len() {
+        let relative = stream[search..]
+            .windows(signature.len())
+            .position(|window| window == signature)?;
+        let start = search + relative;
+        if let Some(end) = validated_payload_end(stream, start, kind) {
+            return Some((start, end));
+        }
+        search = start + 1;
+    }
+    None
+}
+
 fn scientific(path: &Path, format: &str) -> ScientificResult {
+    if managed_models::configured() && matches!(format, "png" | "jpeg") {
+        return match managed_models::infer(path, format) {
+            Ok(predictions) if !predictions.is_empty() => ScientificResult {
+                available: true,
+                provider: "Aletheia",
+                methods: predictions.keys().cloned().collect(),
+                predictions,
+                limitation: Some(
+                    "Respuestas específicas de ALASKA2; no son probabilidades calibradas y pueden degradarse por cover-source mismatch."
+                        .into(),
+                ),
+            },
+            Ok(_) => ScientificResult {
+                available: false,
+                provider: "Aletheia",
+                methods: vec![],
+                predictions: BTreeMap::new(),
+                limitation: Some("No hay un modelo gestionado para este formato.".into()),
+            },
+            Err(error) => ScientificResult {
+                available: false,
+                provider: "Aletheia",
+                methods: vec![],
+                predictions: BTreeMap::new(),
+                limitation: Some(format!("La inferencia gestionada falló: {error}")),
+            },
+        };
+    }
     let executable = std::env::var("STEGOTRACE_ALETHEIA_BIN").ok();
     if !matches!(format, "png" | "jpeg") || executable.is_none() {
         return ScientificResult {
@@ -540,7 +632,7 @@ fn scientific(path: &Path, format: &str) -> ScientificResult {
         .env("TF_CPP_MIN_LOG_LEVEL", "3")
         .output();
     match result {
-        Ok(output) if output.status.success() => ScientificResult { available: true, provider: "Aletheia", methods: vec!["auto".into()], predictions: BTreeMap::new(), limitation: Some("La salida textual queda en el proveedor; use modelos específicos para puntuaciones reproducibles.".into()) },
+        Ok(output) if output.status.success() => ScientificResult { available: false, provider: "Aletheia", methods: vec!["auto".into()], predictions: BTreeMap::new(), limitation: Some("El adaptador externo terminó, pero no devolvió predicciones estructuradas; use `stegotrace models install`.".into()) },
         _ => ScientificResult { available: false, provider: "Aletheia", methods: vec![], predictions: BTreeMap::new(), limitation: Some("Aletheia terminó con error o no pudo ejecutarse.".into()) },
     }
 }
@@ -564,6 +656,20 @@ fn analyze(path: &Path) -> Result<Report> {
         .map(|item| item.confidence)
         .max()
         .unwrap_or(0);
+    let scientific = scientific(path, format);
+    let neural_score = scientific.predictions.values().copied().fold(0.0, f64::max) * 100.0;
+    if scientific.available {
+        findings.push(Finding {
+            id: "scientific.aletheia-effnetb0".into(),
+            category: "scientific",
+            title: "Respuestas de detectores Aletheia".into(),
+            severity: if neural_score >= 50.0 { "medium" } else { "info" },
+            method: "aletheia-effnetb0-alaska2",
+            value: json!(&scientific.predictions),
+            interpretation: "Cada valor es la respuesta de un detector específico; el dominio de entrenamiento y la fuente condicionan su validez.",
+            confidence: 65,
+        });
+    }
     let score = structural_score.max((statistical_score * 0.72).min(72.0) as u8);
     let verdict = if score >= 75 {
         "Indicios fuertes compatibles con esteganografía"
@@ -584,6 +690,9 @@ fn analyze(path: &Path) -> Result<Report> {
             "lsb-signature-carving",
         ]);
     }
+    if scientific.available {
+        methods.push("aletheia-effnetb0-alaska2");
+    }
     Ok(Report {
         schema_version: "1.0",
         engine_version: VERSION,
@@ -596,7 +705,7 @@ fn analyze(path: &Path) -> Result<Report> {
         score_kind: "heuristic_evidence_score",
         findings,
         artifacts,
-        scientific: scientific(path, format),
+        scientific,
         methods,
         limitations: vec![
             "La puntuación no es una probabilidad calibrada.",
@@ -630,7 +739,9 @@ fn artifact_bytes(path: &Path, artifact_id: &str) -> Result<(Artifact, Vec<u8>)>
             &channels,
             artifact.parameters["bit_order"] == "little",
         );
-        stream[artifact.parameters["start"].as_u64().unwrap() as usize..].to_vec()
+        stream[artifact.parameters["start"].as_u64().unwrap() as usize
+            ..artifact.parameters["end"].as_u64().unwrap() as usize]
+            .to_vec()
     };
     if sha256(&payload) != artifact.sha256 {
         bail!("La verificación SHA-256 del artefacto ha fallado");
@@ -682,17 +793,17 @@ fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Doctor => print_value(
-            &json!({"ok": true, "version": VERSION, "runtime": "native-rust", "offline": true, "auth_required": false, "aletheia": std::env::var_os("STEGOTRACE_ALETHEIA_BIN").is_some()}),
+            &json!({"ok": true, "version": VERSION, "runtime": "native-rust", "offline": true, "auth_required": false, "aletheia": managed_models::configured() || std::env::var_os("STEGOTRACE_ALETHEIA_BIN").is_some()}),
             cli.json,
         ),
         Commands::Methods => print_value(
             &json!({"structure": ["container-boundary", "signature-carving"], "statistics": ["chi-square", "RS", "entropy", "runs"], "frontier_native": ["counterfactual re-embedding", "local evidence map"], "frontier_api": ["bounded JPEG antecedent search"], "scientific": ["Aletheia adapter (optional)"], "extraction": ["byte slices", "signature-anchored LSB streams"]}),
             cli.json,
         ),
-        Commands::Models => print_value(
-            &json!({"provider": "Aletheia", "configured": std::env::var_os("STEGOTRACE_ALETHEIA_BIN").is_some(), "policy": "Pesos no redistribuidos; configure STEGOTRACE_ALETHEIA_BIN."}),
-            cli.json,
-        ),
+        Commands::Models { command } => match command {
+            ModelCommands::Install => print_value(&managed_models::install()?, cli.json),
+            ModelCommands::Status => print_value(&managed_models::status()?, cli.json),
+        },
         Commands::Scan { path } => {
             let report = analyze(&path)?;
             if cli.json {
@@ -806,5 +917,19 @@ mod tests {
             *value |= bit;
         }
         assert_eq!(&lsb_stream(&raw, 0, &[0], false)[..4], payload);
+    }
+
+    #[test]
+    fn jpeg_carving_requires_a_decodable_container() {
+        let mut encoded = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new(&mut encoded)
+            .encode(&[32, 64, 96], 1, 1, image::ExtendedColorType::Rgb8)
+            .unwrap();
+        let mut stream = b"\xff\xd8\xffnot-a-jpeg\xff\xd9padding".to_vec();
+        let expected_start = stream.len();
+        stream.extend_from_slice(&encoded);
+        let (start, end) = valid_signature(&stream, b"\xff\xd8\xff", "jpeg").unwrap();
+        assert_eq!(start, expected_start);
+        assert_eq!(end, stream.len());
     }
 }

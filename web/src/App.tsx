@@ -19,15 +19,37 @@ function valueText(value: unknown) {
 function Header({ reset }: { reset: () => void }) {
   return (
     <header className="header">
-      <button className="wordmark" onClick={reset} aria-label="Volver al inicio">
+      <button className="wordmark" onClick={reset} aria-label="StegoTrace · Volver al inicio">
         Stego<span>Trace</span>
       </button>
       <nav aria-label="Navegación principal">
         <a href="#methods">Métodos</a>
         <a href="https://github.com/kattulus1997/stegotrace/blob/main/docs/RESEARCH.md">Investigación</a>
-        <a href="https://github.com/kattulus1997/stegotrace#cli">CLI</a>
+        <a href="#cli">CLI</a>
       </nav>
     </header>
+  );
+}
+
+function CommandLine({ command, label }: { command: string; label: string }) {
+  const [copyLabel, setCopyLabel] = useState("Copiar");
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopyLabel("Copiado");
+      window.setTimeout(() => setCopyLabel("Copiar"), 1800);
+    } catch {
+      setCopyLabel("Selecciona el comando");
+    }
+  }
+
+  return (
+    <div className="command-line">
+      <span>{label}</span>
+      <code>{command}</code>
+      <button onClick={copy}>{copyLabel}</button>
+    </div>
   );
 }
 
@@ -129,6 +151,23 @@ function UploadView({ onReport }: { onReport: (file: File, report: Report) => vo
             <small>Baja</small><small>Media</small><small>Alta</small>
           </div>
         </aside>
+      </section>
+      <section className="cli-install" id="cli">
+        <div className="cli-intro">
+          <span>CLI local · macOS</span>
+          <h2>Analiza sin subir el archivo</h2>
+          <p>Binario nativo Rust para Apple Silicon e Intel. La instalación verifica la firma SHA-256 de la release antes de activar <code>stegotrace</code>.</p>
+          <a href="https://github.com/kattulus1997/stegotrace/releases/latest">Ver release y checksums</a>
+        </div>
+        <div className="cli-commands">
+          <CommandLine
+            label="1 · Instala la CLI"
+            command="curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/kattulus1997/stegotrace/main/install.sh | sh"
+          />
+          <CommandLine label="2 · Añade los modelos científicos" command="stegotrace models install" />
+          <CommandLine label="3 · Analiza" command="stegotrace --json scan imagen.png > informe.json" />
+          <p><code>models install</code> es opcional: descarga 205 MiB de pesos Aletheia fijados por commit y crea un entorno aislado; requiere unos 2,8 GiB en total. Sin pesos, StegoTrace declara que no hubo inferencia; nunca inventa una predicción.</p>
+        </div>
       </section>
       <footer className="principles">
         <div><b>Privacidad por diseño</b><span>No almacenamos archivos ni resultados.</span></div>

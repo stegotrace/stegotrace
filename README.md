@@ -21,6 +21,8 @@ Después:
 
 ```bash
 stegotrace doctor
+stegotrace models install
+stegotrace models status
 stegotrace scan imagen.png
 stegotrace --json scan imagen.png > informe.json
 stegotrace batch muestras/ --out informes/
@@ -28,7 +30,19 @@ stegotrace extract imagen.png --artifact ID --out recuperado.bin
 ```
 
 La extracción nunca sobrescribe, abre, descomprime ni ejecuta el resultado. `scan` no modifica el
-original. Para desarrollar la CLI:
+original. `models install` añade de forma opcional cuatro detectores EfficientNet-B0 de Aletheia:
+LSBM y HILL para imágenes espaciales, y J-UNIWARD y Steghide para JPEG. Descarga 205 MiB de pesos
+desde el commit oficial fijado, comprueba cada SHA-256 y crea un entorno Python/TensorFlow aislado
+en `~/Library/Application Support/StegoTrace` (aproximadamente 2,8 GiB en total). El comando instala
+también una copia gestionada y verificada de `uv` si no existe en el Mac.
+
+Las respuestas de red son específicas de ALASKA2, no probabilidades calibradas. Se conservan como
+evidencia separada y no elevan por sí solas la puntuación global: antes haría falta una calibración
+representativa de la fuente. El informe conserva la procedencia y advierte sobre *cover-source
+mismatch*. Sin esos pesos, `scan` continúa con los métodos nativos y declara que no hubo inferencia;
+no fabrica resultados.
+
+Para desarrollar la CLI:
 
 ```bash
 cargo install --path cli
@@ -55,7 +69,8 @@ Variables:
 
 - API: `STEGOTRACE_ALLOWED_ORIGINS`, `STEGOTRACE_MAX_FILE_BYTES`, `STEGOTRACE_RATE_LIMIT`.
 - Web: `VITE_API_URL`.
-- Modelo opcional: `STEGOTRACE_ALETHEIA_BIN` apunta al `aletheia.py` de una instalación verificada.
+- Modelo opcional local: `stegotrace models install`. La variable `STEGOTRACE_ALETHEIA_BIN` se
+  conserva solo como adaptador compatible para una instalación externa.
 
 ## Cobertura científica
 
@@ -79,4 +94,5 @@ con `nosniff`.
 ## Licencia
 
 Código propio bajo MIT. Los modelos y Aletheia no se redistribuyen: conservan sus licencias y deben
-instalarse desde su publicación original.
+instalarse desde su publicación original. El puente de inferencia conserva el aviso MIT de Aletheia;
+consulte [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
