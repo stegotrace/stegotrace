@@ -10,7 +10,7 @@ sin abrirlas ni ejecutarlas. La puntuación es evidencia heurística, no una pro
 - [Guía completa de la CLI](https://stegotrace.guillermozubikarai.dev/es/cli/)
 - [Complete CLI guide](https://stegotrace.guillermozubikarai.dev/en/cli/)
 - [API y OpenAPI](https://stegotrace-api.guillermozubikarai.dev/docs)
-- [Código, CLI e investigación](https://github.com/kattulus1997/stegotrace)
+- [Código, CLI e investigación](https://github.com/stegotrace/stegotrace)
 
 ## CLI macOS
 

@@ -11,7 +11,7 @@ export default function SiteHeader({ locale, page }: { locale: Locale; page: "ho
       </a>
       <nav aria-label={locale === "es" ? "Navegación principal" : "Main navigation"}>
         {page === "home" && <a href="#methods">{text.methods}</a>}
-        <a href="https://github.com/kattulus1997/stegotrace/blob/main/docs/RESEARCH.md">{text.research}</a>
+        <a href="https://github.com/stegotrace/stegotrace/blob/main/docs/RESEARCH.md">{text.research}</a>
         <a href={route(locale, "cli")}>{text.cli}</a>
         <a className="language-link" href={route(other, page)} hrefLang={other}>{text.language}</a>
       </nav>

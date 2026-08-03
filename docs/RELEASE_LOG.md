@@ -1,5 +1,12 @@
 # Registro de releases
 
+## Reubicación de GitHub · 3 de agosto de 2026
+
+- Repositorio público: `https://github.com/stegotrace/stegotrace`.
+- Propietario: organización `stegotrace` con plan GitHub Free (`0 USD`).
+- Conservados: historial, releases, Actions, secretos, webhooks y redirecciones de GitHub.
+- Actualizados: remoto Git, metadatos de la CLI y enlaces públicos de la web.
+
 ## 0.3.0
 
 Estado: publicado y verificado el 3 de agosto de 2026.

@@ -4,7 +4,7 @@ version = "0.3.0"
 edition = "2024"
 license = "MIT"
 description = "Native macOS steganalysis and safe payload extraction"
-repository = "https://github.com/kattulus1997/stegotrace"
+repository = "https://github.com/stegotrace/stegotrace"
 
 [[bin]]
 name = "stegotrace"
