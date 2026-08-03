@@ -8,7 +8,7 @@
 - Actualizados: remoto Git, metadatos de la CLI y enlaces públicos de la web.
 - Web: navegación y guía enlazan explícitamente el código, la investigación y la release en la
   organización neutral.
-- Vercel: deployment `dpl_Gjk8TyH4j73zRtGP5p96dpRNGicM`, servido por Cloudflare.
+- Vercel: deployment `dpl_H2pUBeRsMhrvgy1rvPg3TAbPeKHN`, servido por Cloudflare.
 
 ## 0.3.0
 
