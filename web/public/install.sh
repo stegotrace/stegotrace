@@ -9,11 +9,19 @@ if [ "$version" = "latest" ]; then
   version="v0.2.0"
 fi
 
-case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64) target="aarch64-apple-darwin" ;;
-  Darwin-x86_64) target="x86_64-apple-darwin" ;;
-  *) printf '%s\n' "StegoTrace publica binarios para macOS arm64/x86_64." >&2; exit 1 ;;
-esac
+if [ "$(uname -s)" != "Darwin" ]; then
+  printf '%s\n' "StegoTrace publica binarios para macOS arm64/x86_64." >&2
+  exit 1
+fi
+
+if [ "$(sysctl -n hw.optional.arm64 2>/dev/null || printf '0')" = "1" ]; then
+  target="aarch64-apple-darwin"
+elif [ "$(uname -m)" = "x86_64" ]; then
+  target="x86_64-apple-darwin"
+else
+  printf '%s\n' "Arquitectura de Mac no compatible." >&2
+  exit 1
+fi
 
 base="${distribution}/${version}"
 archive="stegotrace-${target}.tar.gz"
