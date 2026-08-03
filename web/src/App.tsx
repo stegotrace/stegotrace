@@ -3,6 +3,7 @@ import type { Artifact, Report } from "./types";
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "http://localhost:8000";
 const MAX_BYTES = 25 * 1024 * 1024;
+const SAMPLE_URL = "https://github.com/kattulus1997/stegotrace/raw/refs/heads/main/samples/stegotrace-lsb-zip.png";
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -101,8 +102,8 @@ function UploadView({ onReport }: { onReport: (file: File, report: Report) => vo
     <main>
       <section className="upload-layout">
         <div className="upload-column">
-          <h1>Rastrea datos ocultos</h1>
-          <p className="lead">Inspección estructural, estadística y científica con extracción verificable.</p>
+          <h1>Encuentra datos ocultos</h1>
+          <p className="lead">Busca archivos anexos, cargas LSB y anomalías estadísticas. Si encuentra un flujo recuperable, puedes descargarlo sin abrirlo.</p>
           <div
             className={`dropzone${dragging ? " is-dragging" : ""}`}
             onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
@@ -110,69 +111,70 @@ function UploadView({ onReport }: { onReport: (file: File, report: Report) => vo
             onDrop={drop}
           >
             <div className="upload-mark" aria-hidden="true">↥</div>
-            <p>Suelta un archivo aquí</p>
-            <button className="text-action" onClick={() => input.current?.click()}>o selecciónalo</button>
-            <small>PNG, JPEG, WAV, PDF y contenedores · máximo 25 MB</small>
-            <span className="privacy-line">El archivo se elimina al terminar el análisis</span>
+            <p>Arrastra un archivo</p>
+            <button className="text-action" onClick={() => input.current?.click()}>Seleccionar desde el Mac</button>
+            <small>PNG, JPEG, WAV, PDF y otros contenedores · hasta 25 MB</small>
+            <span className="privacy-line">La API borra el archivo temporal al responder</span>
             <input
               ref={input}
               type="file"
+              aria-label="Seleccionar archivo para analizar"
               onChange={(event: ChangeEvent<HTMLInputElement>) => choose(event.target.files?.[0])}
               hidden
             />
           </div>
           <div className="upload-actions">
             <button className="primary" onClick={analyze} disabled={!file || status === "analyzing"}>
-              {status === "analyzing" ? "Analizando…" : "Analizar archivo"}
+              {status === "analyzing" ? "Examinando…" : "Examinar archivo"}
             </button>
-            <span>{file ? `${file.name} · ${formatBytes(file.size)}` : "Preparado para analizar"}</span>
+            <span>{file ? `${file.name} · ${formatBytes(file.size)}` : "Ningún archivo seleccionado"}</span>
           </div>
           {status === "analyzing" && <div className="progress" role="progressbar"><span /></div>}
           {error && <p className="error" role="alert">{error}</p>}
+          <p className="sample-link">¿Quieres comprobarlo primero? <a href={SAMPLE_URL}>Descarga el PNG de prueba con un ZIP oculto</a>.</p>
         </div>
 
         <aside className="methods" id="methods">
-          <h2>Métodos</h2>
+          <h2>Qué comprueba</h2>
           <div className="method-group">
-            <b>Estructura</b>
-            <ul><li>Cabeceras y finales canónicos</li><li>Firmas y contenedores anexos</li><li>Chunks y metadatos</li></ul>
+            <b>Estructura del archivo</b>
+            <p>Contrasta cabeceras, finales canónicos, firmas, chunks y metadatos para localizar bytes añadidos.</p>
           </div>
           <div className="method-group">
-            <b>Estadística</b>
-            <ul><li>χ² de pares de valores</li><li>Grupos regulares y singulares</li><li>Entropía, runs y planos de bits</li></ul>
+            <b>Pruebas estadísticas</b>
+            <p>Calcula χ², análisis RS, entropía, runs y planos de bits. Los métodos aplicados quedan registrados en el JSON.</p>
           </div>
           <div className="method-group">
-            <b>Modelo científico</b>
-            <ul><li>Aletheia / redes específicas</li><li>Confianza y procedencia</li><li>Advertencia de source mismatch</li></ul>
+            <b>Modelos opcionales</b>
+            <p>Aletheia solo interviene cuando existen pesos compatibles. El informe identifica el modelo y avisa si la fuente no coincide.</p>
           </div>
-          <div className="confidence-key">
-            <span>Escala orientativa</span>
-            <div><i /> <i /> <i /> <i /> <i /></div>
-            <small>Baja</small><small>Media</small><small>Alta</small>
+          <div className="method-note">
+            <b>Cómo leer el índice</b>
+            <p>Ordena indicios heurísticos de 0 a 100. No expresa la probabilidad de que el archivo contenga esteganografía.</p>
           </div>
         </aside>
       </section>
       <section className="cli-install" id="cli">
         <div className="cli-intro">
-          <span>CLI local · macOS</span>
-          <h2>Analiza sin subir el archivo</h2>
-          <p>Binario nativo Rust para Apple Silicon e Intel. La instalación verifica la firma SHA-256 de la release antes de activar <code>stegotrace</code>.</p>
+          <span>CLI para macOS · Rust nativo</span>
+          <h2>Procesa el archivo en tu Mac</h2>
+          <p>El instalador detecta Apple Silicon o Intel y comprueba el SHA-256 del binario antes de activar <code>stegotrace</code>.</p>
           <a href="https://github.com/kattulus1997/stegotrace/releases/latest">Ver release y checksums</a>
         </div>
         <div className="cli-commands">
           <CommandLine
-            label="1 · Instala la CLI"
+            label="Instalar"
             command="curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/kattulus1997/stegotrace/main/install.sh | sh"
           />
-          <CommandLine label="2 · Añade los modelos científicos" command="stegotrace models install" />
-          <CommandLine label="3 · Analiza" command="stegotrace --json scan imagen.png > informe.json" />
-          <p><code>models install</code> es opcional: descarga 205 MiB de pesos Aletheia fijados por commit y crea un entorno aislado; requiere unos 2,8 GiB en total. Sin pesos, StegoTrace declara que no hubo inferencia; nunca inventa una predicción.</p>
+          <CommandLine label="Analizar" command="stegotrace --json scan imagen.png > informe.json" />
+          <CommandLine label="Añadir Aletheia" command="stegotrace models install" />
+          <p>La detección estructural y estadística funciona sin Aletheia. <code>models install</code> añade 205 MiB de pesos fijados por commit en un entorno aislado y requiere unos 2,8 GiB. Si no hubo inferencia, el informe lo declara; no rellena predicciones.</p>
         </div>
       </section>
-      <footer className="principles">
-        <div><b>Privacidad por diseño</b><span>No almacenamos archivos ni resultados.</span></div>
-        <div><b>Incertidumbre científica</b><span>La esteganálisis no ofrece certezas absolutas.</span></div>
-        <div><b>Procesamiento europeo</b><span>El motor se ejecuta en Railway EU West.</span></div>
+      <footer className="principles" aria-label="Condiciones del servicio">
+        <div><b>Archivos efímeros</b><span>La API elimina cada temporal al responder.</span></div>
+        <div><b>Resultados auditables</b><span>El JSON conserva método, valor y procedencia.</span></div>
+        <div><b>Railway EU West</b><span>El procesamiento web se ejecuta en Europa.</span></div>
       </footer>
     </main>
   );
@@ -217,7 +219,7 @@ function ResultsView({ file, report, reset }: { file: File; report: Report; rese
 
   return (
     <main className="results">
-      <h1>Resultado del análisis</h1>
+      <h1>Informe forense</h1>
       <section className="summary">
         <div className="file-summary">
           <b>{report.filename}</b>
@@ -227,14 +229,15 @@ function ResultsView({ file, report, reset }: { file: File; report: Report; rese
         </div>
         <div className="score-summary">
           <b>{report.verdict}</b>
-          <span>Confianza orientativa</span>
-          <strong><em>{report.score}</em> / 100</strong>
+          <span>Índice heurístico · no es una probabilidad</span>
+          <strong><em>{report.score}</em><small>/ 100</small></strong>
           <div className="score-line"><i style={{ width: `${report.score}%` }} /></div>
         </div>
       </section>
 
       <section className="evidence">
-        <h2>Evidencia</h2>
+        <h2>Indicios observados</h2>
+        <p className="table-hint">Desliza la tabla para ver valores e interpretaciones.</p>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Categoría</th><th>Indicio</th><th>Severidad</th><th>Método</th><th>Valor observado</th><th>Interpretación</th><th>Conf.</th></tr></thead>
@@ -251,13 +254,13 @@ function ResultsView({ file, report, reset }: { file: File; report: Report; rese
       </section>
 
       <section className="artifacts">
-        <h2>Datos recuperables</h2>
+        <h2>Flujos recuperables</h2>
         {report.artifacts.length ? report.artifacts.map((artifact) => (
           <div className="artifact-row" key={artifact.id}>
             <div><b>{artifact.suggested_name}</b><span>{artifact.description}</span></div>
             <code>{formatBytes(artifact.size)} · {artifact.sha256.slice(0, 16)}…</code>
             <button onClick={() => extract(artifact)} disabled={extracting === artifact.id}>
-              {extracting === artifact.id ? "Extrayendo…" : "Extraer de forma segura"}
+              {extracting === artifact.id ? "Extrayendo…" : "Descargar sin abrir"}
             </button>
           </div>
         )) : <p className="empty">No se detectaron flujos recuperables con firma reconocible.</p>}
@@ -267,9 +270,9 @@ function ResultsView({ file, report, reset }: { file: File; report: Report; rese
       <div className="result-actions">
         <button onClick={downloadReport}>Descargar informe JSON</button>
         <button onClick={reset}>Analizar otro archivo</button>
-        <div><b>Métodos / Procedencia</b><span>{report.methods.join(" · ")}</span></div>
+        <div><b>Métodos aplicados</b><span>{report.methods.join(" · ")}</span></div>
       </div>
-      <footer className="limitation"><b>Limitación</b><span>{report.limitations.join(" ")}</span></footer>
+      <footer className="limitation"><b>Límite del informe</b><span>{report.limitations.join(" ")}</span></footer>
     </main>
   );
 }
