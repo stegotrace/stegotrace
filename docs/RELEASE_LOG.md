@@ -1,5 +1,19 @@
 # Registro de releases
 
+## Distribución CLI · revisión del 3 de agosto de 2026
+
+Estado: publicado y verificado.
+
+- Instalación gratuita desde `stegotrace.guillermozubikarai.dev`, sin consultas ni descargas desde GitHub.
+- Arquitecturas: detección del hardware físico; arm64 para Apple Silicon y x86_64 para Mac Intel,
+  incluso cuando Terminal se ejecuta traducido. No requiere Rosetta, Rust ni Python.
+- Integridad: binarios versionados con SHA-256 individual y manifiesto público; ambos flujos de
+  selección y sus checksums están cubiertos por `make web-check`.
+- Favicon: SVG, ICO, PNG y Apple Touch comparten el mismo símbolo y URLs versionadas.
+- Vercel: deployment `dpl_BzE89cKF3gxTHWjXujxz1TJ4ekr1`, servido por Cloudflare.
+- Verificado: instalación limpia arm64 desde el comando público con `doctor.ok=true`, selección
+  simulada Intel y Apple Silicon traducido, artefactos remotos y favicons con hash local coincidente.
+
 ## Web · revisión del 3 de agosto de 2026
 
 Estado: publicado y verificado.
