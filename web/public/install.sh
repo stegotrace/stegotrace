@@ -2,7 +2,7 @@
 set -eu
 
 version="${STEGOTRACE_VERSION:-latest}"
-install_dir="${STEGOTRACE_INSTALL_DIR:-${HOME}/.local/bin}"
+install_dir="${STEGOTRACE_INSTALL_DIR:-/usr/local/bin}"
 distribution="https://stegotrace.guillermozubikarai.dev/cli"
 
 if [ "$version" = "latest" ]; then
@@ -32,11 +32,18 @@ curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error "${base}
 curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error "${base}/${archive}.sha256" --output "${temporary}/${archive}.sha256"
 (cd "$temporary" && shasum -a 256 -c "${archive}.sha256")
 tar -xzf "${temporary}/${archive}" -C "$temporary"
-mkdir -p "$install_dir"
-install -m 0755 "${temporary}/stegotrace" "${install_dir}/stegotrace"
+if mkdir -p "$install_dir" 2>/dev/null && [ -w "$install_dir" ]; then
+  install -m 0755 "${temporary}/stegotrace" "${install_dir}/stegotrace"
+else
+  printf '%s\n' "macOS pedirá tu contraseña para instalar StegoTrace en ${install_dir}."
+  sudo mkdir -p "$install_dir"
+  sudo install -m 0755 "${temporary}/stegotrace" "${install_dir}/stegotrace"
+fi
 
-printf '%s\n' "StegoTrace instalado en ${install_dir}/stegotrace"
+"${install_dir}/stegotrace" --json doctor >/dev/null
+
+printf '%s\n' "StegoTrace instalado y verificado en ${install_dir}/stegotrace"
 case ":${PATH}:" in
-  *":${install_dir}:"*) ;;
-  *) printf '%s\n' "Añade ${install_dir} a PATH para ejecutar: stegotrace doctor" ;;
+  *":${install_dir}:"*) printf '%s\n' "Ejecuta: stegotrace doctor" ;;
+  *) printf '%s\n' "Ejecuta: ${install_dir}/stegotrace doctor" ;;
 esac

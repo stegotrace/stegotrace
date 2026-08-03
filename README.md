@@ -18,9 +18,10 @@ curl --proto '=https' --tlsv1.2 -LsSf https://stegotrace.guillermozubikarai.dev/
 ```
 
 El instalador y los binarios se sirven gratuitamente desde el dominio de StegoTrace. La instalación
-no consulta GitHub: detecta la arquitectura del Mac, descarga el archivo versionado y valida su
-SHA-256 antes de copiar el ejecutable. Usa un binario nativo en Apple Silicon y otro en Intel, por
-lo que no requiere Rosetta, Rust ni Python.
+no consulta GitHub: detecta la arquitectura del Mac, descarga el archivo versionado, valida su
+SHA-256 y comprueba el ejecutable con `doctor`. Usa un binario nativo en Apple Silicon y otro en
+Intel, por lo que funciona en un Mac recién estrenado sin Homebrew, Xcode, Rosetta, Rust ni Python.
+macOS puede pedir la contraseña para copiarlo a `/usr/local/bin`, que ya forma parte de su `PATH`.
 
 Después:
 

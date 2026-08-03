@@ -159,7 +159,7 @@ function UploadView({ onReport }: { onReport: (file: File, report: Report) => vo
         <div className="cli-intro">
           <span>CLI para macOS · Rust nativo</span>
           <h2>Procesa el archivo en tu Mac</h2>
-          <p>La descarga es gratuita y se sirve desde este dominio. Instala el binario nativo para Apple Silicon o Intel, comprueba su SHA-256 y no requiere Rosetta, Rust ni Python.</p>
+          <p>La descarga es gratuita y se sirve desde este dominio. Funciona en un Mac recién estrenado: elige el binario nativo para Apple Silicon o Intel, comprueba su SHA-256 y no necesita Homebrew, Xcode, Rosetta, Rust ni Python. macOS puede pedir tu contraseña para instalarlo.</p>
           <a href="/cli/v0.2.0/SHA256SUMS.txt">Ver binarios y checksums</a>
         </div>
         <div className="cli-commands">
