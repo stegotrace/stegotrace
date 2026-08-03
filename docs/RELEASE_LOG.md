@@ -21,6 +21,7 @@ Estado: publicado y verificado.
 Estado: publicado y verificado.
 
 - Interfaz: copy forense específico, jerarquía tipográfica simplificada y muestra LSB descargable.
+- Móvil: eliminado el cuadrado decorativo ambiguo del aviso sobre archivos temporales.
 - Resultados: el índice se identifica expresamente como heurístico y la extracción como descarga sin apertura.
 - Vercel: deployment `dpl_5dEkmTssh24esYQ9eM5czga1sz7u`, servido por el dominio público detrás de Cloudflare.
 - Verificado: `make web-check`, escaneo `kill-ai-slop` sin señales, escritorio y móvil en Chrome,
