@@ -152,6 +152,8 @@ td code { font-size: 9px; }
 .guide-body ul { max-width: 920px; margin: 26px 0 0; padding-left: 20px; }
 .guide-body li { margin: 8px 0; padding-left: 4px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .guide-body > footer { padding: 28px 42px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.guide-body > footer p { margin: 0 0 8px; }
+.guide-body > footer a { margin-right: 20px; color: var(--ink); text-underline-offset: 4px; }
 
 @media (max-width: 900px) {
   .app-shell { padding: 0 14px; }

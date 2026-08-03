@@ -7,6 +7,7 @@ import type { Artifact, Report } from "./types";
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "http://localhost:8000";
 const MAX_BYTES = 25 * 1024 * 1024;
 const SAMPLE_URL = "/samples/stegotrace-lsb-zip.png";
+const REPOSITORY_URL = "https://github.com/stegotrace/stegotrace";
 const INSTALL_COMMAND = "curl --proto '=https' --tlsv1.2 -LsSf https://stegotrace.guillermozubikarai.dev/install.sh | sh";
 
 function formatBytes(bytes: number) {
@@ -139,7 +140,7 @@ function UploadView({ locale, onReport }: { locale: Locale; onReport: (file: Fil
           <span>{text.cliEyebrow}</span>
           <h2>{text.cliTitle}</h2>
           <p>{text.cliText}</p>
-          <div className="cli-links"><a href={route(locale, "cli")} className="guide-link">{text.guide}</a><a href="/cli/v0.3.0/SHA256SUMS.txt">{text.checksums}</a></div>
+          <div className="cli-links"><a href={route(locale, "cli")} className="guide-link">{text.guide}</a><a href="/cli/v0.3.0/SHA256SUMS.txt">{text.checksums}</a><a href={REPOSITORY_URL}>{text.source}</a></div>
         </div>
         <div className="cli-commands">
           <CommandLine

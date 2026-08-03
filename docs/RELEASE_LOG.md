@@ -6,6 +6,9 @@
 - Propietario: organización `stegotrace` con plan GitHub Free (`0 USD`).
 - Conservados: historial, releases, Actions, secretos, webhooks y redirecciones de GitHub.
 - Actualizados: remoto Git, metadatos de la CLI y enlaces públicos de la web.
+- Web: navegación y guía enlazan explícitamente el código, la investigación y la release en la
+  organización neutral.
+- Vercel: deployment `dpl_Gjk8TyH4j73zRtGP5p96dpRNGicM`, servido por Cloudflare.
 
 ## 0.3.0
 

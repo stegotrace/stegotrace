@@ -4,6 +4,8 @@ import type { Locale } from "./i18n";
 
 const DOWNLOAD = "curl --proto '=https' --tlsv1.2 -LsSf https://stegotrace.guillermozubikarai.dev/install.sh";
 const INSTALL = `${DOWNLOAD} | sh`;
+const REPOSITORY = "https://github.com/stegotrace/stegotrace";
+const RELEASE = `${REPOSITORY}/releases/tag/v0.3.0`;
 
 type GuideSection = {
   id: string;
@@ -13,7 +15,7 @@ type GuideSection = {
   points?: readonly string[];
 };
 
-const guides: Record<Locale, { title: string; intro: string; start: string; contents: string; sections: GuideSection[]; footer: string }> = {
+const guides: Record<Locale, { title: string; intro: string; start: string; contents: string; sections: GuideSection[]; footer: string; source: string; release: string }> = {
   es: {
     title: "Guía de la CLI",
     intro: "Instala StegoTrace en macOS, analiza uno o miles de archivos y extrae únicamente los flujos que superan una validación estructural. La CLI es local: scan, batch y extract no suben el archivo.",
@@ -101,6 +103,8 @@ const guides: Record<Locale, { title: string; intro: string; start: string; cont
       },
     ],
     footer: "Para reproducir la evaluación pública con muestras reales, consulta REAL_WORLD_EVALUATION.md en el repositorio.",
+    source: "Abrir el repositorio",
+    release: "Ver la release v0.3.0",
   },
   en: {
     title: "CLI guide",
@@ -189,6 +193,8 @@ const guides: Record<Locale, { title: string; intro: string; start: string; cont
       },
     ],
     footer: "See REAL_WORLD_EVALUATION.md in the repository to reproduce the public real-sample evaluation.",
+    source: "Open the repository",
+    release: "View release v0.3.0",
   },
 };
 
@@ -220,7 +226,7 @@ export default function Guide({ locale }: { locale: Locale }) {
                 {section.points && <ul>{section.points.map((point) => <li key={point}>{point}</li>)}</ul>}
               </section>
             ))}
-            <footer>{guide.footer}</footer>
+            <footer><p>{guide.footer}</p><a href={REPOSITORY}>{guide.source}</a><a href={RELEASE}>{guide.release}</a></footer>
           </article>
         </div>
       </main>

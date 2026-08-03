@@ -2,7 +2,7 @@ export type Locale = "es" | "en";
 
 export const copy = {
   es: {
-    nav: { methods: "Métodos", research: "Investigación", cli: "Guía CLI", language: "English" },
+    nav: { methods: "Métodos", research: "Investigación", source: "Código", cli: "Guía CLI", language: "English" },
     home: {
       title: "Encuentra datos ocultos",
       lead: "Examina la estructura, los planos de bits y señales estadísticas. Si hay una carga recuperable, descárgala sin abrirla.",
@@ -29,6 +29,7 @@ export const copy = {
       cliTitle: "Analiza sin subir el archivo",
       cliText: "El instalador gratuito selecciona Apple Silicon o Intel, verifica el SHA-256 y funciona sin Homebrew, Xcode, Rosetta, Rust ni Python. macOS puede pedir tu contraseña para copiar el binario.",
       checksums: "Binarios y checksums",
+      source: "Código fuente",
       guide: "Abrir la guía completa",
       install: "Instalar",
       scan: "Analizar",
@@ -53,7 +54,7 @@ export const copy = {
     },
   },
   en: {
-    nav: { methods: "Methods", research: "Research", cli: "CLI guide", language: "Español" },
+    nav: { methods: "Methods", research: "Research", source: "Source", cli: "CLI guide", language: "Español" },
     home: {
       title: "Find hidden data",
       lead: "Inspect file structure, bit planes, and statistical signals. If a payload can be recovered, download it without opening it.",
@@ -80,6 +81,7 @@ export const copy = {
       cliTitle: "Analyze without uploading",
       cliText: "The free installer selects Apple Silicon or Intel, verifies SHA-256, and works without Homebrew, Xcode, Rosetta, Rust, or Python. macOS may request your password to copy the binary.",
       checksums: "Binaries and checksums",
+      source: "Source code",
       guide: "Open the complete guide",
       install: "Install",
       scan: "Scan",
